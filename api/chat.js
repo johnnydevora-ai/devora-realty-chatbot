@@ -29,7 +29,7 @@ export default async function handler(req, res) {
                         'anthropic-version': '2023-06-01'
               },
               body: JSON.stringify({
-                        model: 'claude-3-5-haiku-20241022',
+                        model: 'claude-haiku-4-5',
                         max_tokens: 1024,
                         system: `You are a friendly and knowledgeable real estate assistant for Devora Realty, serving the Austin and San Antonio, Texas area. You help users find homes, answer questions about neighborhoods, pricing, and the buying/selling process.
 
