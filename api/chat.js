@@ -1,15 +1,15 @@
 export default async function handler(req, res) {
-          // Handle CORS preflight
+            // Handle CORS preflight
   res.setHeader('Access-Control-Allow-Origin', '*');
-          res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-          res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+            res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
-              return res.status(200).end();
+                return res.status(200).end();
   }
 
   if (!req.body) {
-              return res.status(400).json({ reply: 'No request body received.' });
+                return res.status(400).json({ reply: 'No request body received.' });
   }
 
   // Accept both formats:
@@ -18,26 +18,26 @@ export default async function handler(req, res) {
   let messages = req.body.messages;
 
   if (!messages || !Array.isArray(messages)) {
-              // Try to reconstruct from old { message, history } format
-            const { message, history } = req.body;
-              if (message) {
-                            const historyArray = Array.isArray(history) ? history : [];
-                            messages = [...historyArray, { role: 'user', content: message }];
-              }
+                // Try to reconstruct from old { message, history } format
+              const { message, history } = req.body;
+                if (message) {
+                                const historyArray = Array.isArray(history) ? history : [];
+                                messages = [...historyArray, { role: 'user', content: message }];
+                }
   }
 
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
-              return res.status(400).json({ reply: 'No messages provided.' });
+                return res.status(400).json({ reply: 'No messages provided.' });
   }
 
   // Filter out the hardcoded UI opening greeting so it is not sent to the AI
   const OPENING_MESSAGE = "Stop the scroll.\nTell me what you're actually looking for.\nSkip the filters. Just say it.";
-          const filteredMessages = messages.filter(
-                      (m) => !(m.role === 'assistant' && m.content === OPENING_MESSAGE)
-                    );
+            const filteredMessages = messages.filter(
+                          (m) => !(m.role === 'assistant' && m.content === OPENING_MESSAGE)
+                        );
 
   if (filteredMessages.length === 0 || filteredMessages[filteredMessages.length - 1].role !== 'user') {
-              return res.status(400).json({ reply: 'No user message to respond to.' });
+                return res.status(400).json({ reply: 'No user message to respond to.' });
   }
 
   const systemPrompt = `You are Dalton, a refined real estate advisor for Devora Realty.
@@ -92,39 +92,60 @@ export default async function handler(req, res) {
   That helps.
   Let me pull a few that actually fit this."
 
+  CONVERSATION QUALITY CONTROL:
+  - Avoid filler words like "Perfect"
+  - Do not ask questions that do not immediately improve the search
+  - Prioritize momentum over collecting every detail
+  - Guide toward results, not endless qualification
+
+  QUESTION STRATEGY:
+  Only ask a question if it meaningfully improves the next step.
+  If not, move forward.
+
+  TONE REFINEMENT:
+  Replace "Perfect" with more natural acknowledgments:
+  - "Got it."
+  - "That works."
+  - "Understood."
+
+  DECISIVENESS:
+  When enough info is gathered, do not stall. Move forward confidently.
+  Example: "I'll pull a few that actually fit this."
+  NOT: "Let me know if you'd like me to..."
+
   You are guiding, not interrogating. Keep everything calm, clear, and intentional.`;
 
   try {
-              const response = await fetch("https://api.anthropic.com/v1/messages", {
-                            method: "POST",
-                            headers: {
-                                            "x-api-key": process.env.ANTHROPIC_API_KEY,
-                                            "anthropic-version": "2023-06-01",
-                                            "content-type": "application/json"
-                            },
-                            body: JSON.stringify({
-                                            model: "claude-haiku-4-5-20251001",
-                                            max_tokens: 300,
-                                            temperature: 0.5,
-                                            system: systemPrompt,
-                                            messages: filteredMessages
-                            })
-              });
+                const response = await fetch("https://api.anthropic.com/v1/messages", {
+                                method: "POST",
+                                headers: {
+                                                  "x-api-key": process.env.ANTHROPIC_API_KEY,
+                                                  "anthropic-version": "2023-06-01",
+                                                  "content-type": "application/json"
+                                },
+                                body: JSON.stringify({
+                                                  model: "claude-haiku-4-5-20251001",
+                                                  max_tokens: 300,
+                                                  temperature: 0.5,
+                                                  system: systemPrompt,
+                                                  messages: filteredMessages
+                                })
+                });
 
-            const rawText = await response.text();
-              console.error("STATUS:", response.status);
-              console.error("ANTHROPIC RAW RESPONSE:", rawText);
+              const rawText = await response.text();
+                console.error("STATUS:", response.status);
+                console.error("ANTHROPIC RAW RESPONSE:", rawText);
 
-            if (!response.ok) {
-                          return res.status(500).json({ reply: "Something didn't come through. Try that again." });
-            }
+              if (!response.ok) {
+                              return res.status(500).json({ reply: "Something didn't come through. Try that again." });
+              }
 
-            const data = JSON.parse(rawText);
-              const reply = data?.content?.[0]?.text || "Something didn't come through. Try that again.";
+              const data = JSON.parse(rawText);
+                const reply = data?.content?.[0]?.text || "Something didn't come through. Try that again.";
 
-            res.json({ reply });
+              res.json({ reply });
   } catch (error) {
-              console.error("Anthropic fetch error:", error);
-              res.json({ reply: "Something didn't come through. Try that again." });
+                console.error("Anthropic fetch error:", error);
+                res.json({ reply: "Something didn't come through. Try that again." });
   }
 }
