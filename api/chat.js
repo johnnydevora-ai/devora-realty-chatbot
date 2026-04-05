@@ -1,5 +1,5 @@
 export default async function handler(req, res) {
-        const { message, history = [] } = req.body;
+            const { message, history = [] } = req.body;
 
     const systemPrompt = `
         You are Dalton, a high-end real estate advisor for Devora Realty.
@@ -48,37 +48,40 @@ export default async function handler(req, res) {
                                                                                                                                                     `;
 
     try {
-                const response = await fetch("https://api.anthropic.com/v1/messages", {
-                                method: "POST",
-                                headers: {
-                                                    "x-api-key": process.env.ANTHROPIC_API_KEY,
-                                                    "anthropic-version": "2023-06-01",
-                                                    "content-type": "application/json"
-                                },
-                                body: JSON.stringify({
-                                                    model: "claude-3-5-sonnet-20241022",
-                                                    max_tokens: 300,
-                                                    temperature: 0.5,
-                                                    system: systemPrompt,
-                                                    messages: [
-                                                                            ...history,
-                                                        { role: "user", content: message }
-                                                                        ]
-                                })
-                });
+                    const response = await fetch("https://api.anthropic.com/v1/messages", {
+                                        method: "POST",
+                                        headers: {
+                                                                "x-api-key": process.env.ANTHROPIC_API_KEY,
+                                                                "anthropic-version": "2023-06-01",
+                                                                "content-type": "application/json"
+                                        },
+                                        body: JSON.stringify({
+                                                                model: "claude-3-5-sonnet-20241022",
+                                                                max_tokens: 300,
+                                                                temperature: 0.5,
+                                                                system: systemPrompt,
+                                                                messages: [
+                                                                                            ...history,
+                                                                        { role: "user", content: message }
+                                                                                        ]
+                                        })
+                    });
 
-            const data = await response.json();
+                const rawText = await response.text();
 
-            if (!response.ok) {
-                            console.error("Anthropic API error response:", JSON.stringify(data));
-                            return res.status(500).json({ reply: "Something didn't come through. Try that again." });
-            }
+                console.error("STATUS:", response.status);
+                    console.error("ANTHROPIC RAW RESPONSE:", rawText);
 
-            const reply = data?.content?.[0]?.text || "Something didn't come through. Try that again.";
+                if (!response.ok) {
+                                    return res.status(500).json({ reply: "Something didn't come through. Try that again." });
+                }
 
-            res.json({ reply });
+                const data = JSON.parse(rawText);
+                    const reply = data?.content?.[0]?.text || "Something didn't come through. Try that again.";
+
+                res.json({ reply });
     } catch (error) {
-                console.error("Anthropic fetch error:", error);
-                res.json({ reply: "Something didn't come through. Try that again." });
+                    console.error("Anthropic fetch error:", error);
+                    res.json({ reply: "Something didn't come through. Try that again." });
     }
 }
