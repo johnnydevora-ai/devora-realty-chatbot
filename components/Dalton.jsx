@@ -11,7 +11,7 @@ const daltonStyles = `
                   width: 56px;
                       height: 56px;
                           background: rgba(10,10,10,0.75);
-                              backdrop-filter: blur(12px);
+                              backdrop-filter: blur(12px)
                                   -webkit-backdrop-filter: blur(12px);
                                       border-radius: 50%;
                                           border: 1px solid rgba(255,255,255,0.08);
@@ -266,14 +266,14 @@ export default function Dalton({ isOpen, onClose }) {
                 <div className={`dalton-panel${mounted ? " dalton-open" : ""}`}>
                 
                   {/* HEADER LABEL */}
-                        <div className="dalton-label">DALTON</div>div>
+                        <div className="dalton-label">DALTON</div>
                 
                   {/* PRIMARY HOOK */}
-                        <div className="dalton-hook">Stop the scroll.</div>div>
+                        <div className="dalton-hook">Stop the scroll.</div>
                 
                   {/* SECONDARY COPY â shown until user starts typing */}
                   {!started && (
-                      <div className="dalton-sub">{`Tell me what you're actually looking for.\n\nI'll narrow it down.`}</div>div>
+                      <div className="dalton-sub">{`Tell me what you're actually looking for.\n\nI'll narrow it down.`}</div>
                         )}
                 
                   {/* MESSAGES â shown after first send */}
@@ -284,13 +284,13 @@ export default function Dalton({ isOpen, onClose }) {
                                         {msg.content}
                                       </div>
                                     ))}
-                        {loading && <div className="dalton-thinking">narrowing it downâ¦</div>div>}
+                        {loading && <div className="dalton-thinking">narrowing it downâ¦</div>}
                                   <div ref={bottomRef} />
                       </div>
                         )}
                   {started && messages.length === 0 && loading && (
                       <div className="dalton-messages">
-                                  <div className="dalton-thinking">narrowing it downâ¦</div>div>
+                                  <div className="dalton-thinking">narrowing it downâ¦</div>
                       </div>
                         )}
                 
