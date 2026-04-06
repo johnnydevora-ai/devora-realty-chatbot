@@ -11,6 +11,6 @@ export default function Home() {
         
           {/* DALTON PANEL + OVERLAY */}
               <Dalton isOpen={open} onClose={() => setOpen(false)} />
-        </main>main>
+        </main>
       );
-}</main>
+}
