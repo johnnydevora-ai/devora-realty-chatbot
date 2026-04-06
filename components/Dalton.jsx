@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 
-// DALTON UI v2 — Luxury Control Panel
+// DALTON UI v2 â Luxury Control Panel
 // Minimal. Matte. Confident. No noise.
 
 const daltonStyles = `
@@ -172,7 +172,7 @@ const DaltonIcon = () => (
                     fill="rgba(255,255,255,0.8)"/>
         <path d="M14.5 11 L15 12 L16 12.5 L15 13 L14.5 14 L14 13 L13 12.5 L14 12 Z"
                     fill="rgba(255,255,255,0.8)"/>
-    </svg>svg>
+    </svg>
   );
 
 const ArrowIcon = () => (
@@ -182,7 +182,7 @@ const ArrowIcon = () => (
                     strokeWidth="1.5"
                     strokeLinecap="round"
                     strokeLinejoin="round"/>
-    </svg>svg>
+    </svg>
   );
 
 export default function Dalton({ isOpen, onClose }) {
@@ -262,7 +262,7 @@ export default function Dalton({ isOpen, onClose }) {
             {/* OVERLAY */}
                 <div className="dalton-overlay" onClick={onClose} />
           
-            {/* WIDGET PANEL — bottom right, 360px */}
+            {/* WIDGET PANEL â bottom right, 360px */}
                 <div className={`dalton-panel${mounted ? " dalton-open" : ""}`}>
                 
                   {/* HEADER LABEL */}
@@ -271,27 +271,27 @@ export default function Dalton({ isOpen, onClose }) {
                   {/* PRIMARY HOOK */}
                         <div className="dalton-hook">Stop the scroll.</div>div>
                 
-                  {/* SECONDARY COPY — shown until user starts typing */}
+                  {/* SECONDARY COPY â shown until user starts typing */}
                   {!started && (
                       <div className="dalton-sub">{`Tell me what you're actually looking for.\n\nI'll narrow it down.`}</div>div>
                         )}
                 
-                  {/* MESSAGES — shown after first send */}
+                  {/* MESSAGES â shown after first send */}
                   {started && messages.length > 0 && (
                       <div className="dalton-messages">
                         {messages.map((msg, i) => (
                                       <div key={i} className={msg.role === "user" ? "dalton-msg-user" : "dalton-msg-ai"}>
                                         {msg.content}
-                                      </div>div>
+                                      </div>
                                     ))}
-                        {loading && <div className="dalton-thinking">narrowing it down…</div>div>}
+                        {loading && <div className="dalton-thinking">narrowing it downâ¦</div>div>}
                                   <div ref={bottomRef} />
-                      </div>div>
+                      </div>
                         )}
                   {started && messages.length === 0 && loading && (
                       <div className="dalton-messages">
-                                  <div className="dalton-thinking">narrowing it down…</div>div>
-                      </div>div>
+                                  <div className="dalton-thinking">narrowing it downâ¦</div>div>
+                      </div>
                         )}
                 
                   {/* INPUT ROW */}
@@ -311,14 +311,14 @@ export default function Dalton({ isOpen, onClose }) {
                                                 disabled={loading}
                                               >
                                               <ArrowIcon />
-                                  </button>button>
-                        </div>div>
-                </div>div>
-          </>>
+                                  </button>
+                        </div>
+                </div>
+          </>
         );
 }
 
-// Trigger button — exported for use in index.jsx
+// Trigger button â exported for use in index.jsx
 export function DaltonTrigger({ onClick }) {
     return (
           <>
@@ -349,7 +349,7 @@ export function DaltonTrigger({ onClick }) {
                                                                                                                                                                                                                                                     `}} />
                 <button className="dalton-trigger" onClick={onClick} aria-label="Open Dalton">
                         <DaltonIcon />
-                </button>button>
-          </>>
+                </button>
+          </>
         );
 }</></></svg>
