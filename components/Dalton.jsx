@@ -1,4 +1,4 @@
-————……—import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 
 // DALTON UI v2 â Luxury Control Panel
 // Minimal. Matte. Confident. No noise.
@@ -7,7 +7,7 @@ const daltonStyles = `
   .dalton-trigger {
       position: fixed;
           bottom: 24px;
-              right: 24px;
+              right: 24px
                   width: 56px;
                       height: 56px;
                           background: rgba(10,10,10,0.75);
@@ -230,7 +230,7 @@ export default function Dalton({ isOpen, onClose }) {
           setLoading(true);
       
           try {
-                  const res = await fetch("/api/chat", {
+                  const res = await fetch("/api/dalton", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
@@ -352,4 +352,4 @@ export function DaltonTrigger({ onClick }) {
                 </button>
           </>
         );
-}</></></svg>
+}
