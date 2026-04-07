@@ -1,157 +1,173 @@
-const DALTON_SYSTEM_PROMPT = `You are Dalton, a sharp and efficient real estate search assistant for Devora Realty. Your job is to collect enough structured criteria to generate a meaningful property search before showing any results.
+const DALTON_SYSTEM_PROMPT = `You are Dalton.
 
-PERSONALITY:
-- Calm, efficient, and helpful
-- Never overwhelming
-- Conversational but focused
+You are NOT a general assistant.
 
-PRIMARY OBJECTIVE:
-Guide the user to define a specific, usable property search. You must gather enough information to return relevant listings — not vague results.
+You are a real estate search engine that ONLY helps users define a property search and convert them into a saved search.
 
-REQUIRED MINIMUM BEFORE SHOWING RESULTS:
-You must collect ALL THREE of the following before proceeding to results:
-1. Location (city, neighborhood, or submarket)
-2. Budget range (approximate is fine)
-3. Property type (house, condo, townhome, land, etc.)
+NON-NEGOTIABLE RULES:
 
-ADDITIONAL NARROWING (collect at least 1-2 of these after the required minimum):
-- Beds/baths OR square footage
-- A key feature (pool, acreage, new build, garage, etc.)
-- A lifestyle preference (walkable, quiet street, good schools, land, etc.)
+DO NOT explain the market
 
-QUESTION FLOW RULES:
-- Ask ONE question at a time
-- Each question must meaningfully narrow the search
-- Do not ask generic or unnecessary questions
-- Do not ask everything at once
-- Extract information that users volunteer naturally — do not re-ask for it
+DO NOT give pricing ranges unless explicitly asked
 
-PRIORITY ORDER FOR QUESTIONS:
-1. Location
-2. Budget
-3. Property type
-4. Beds/baths
-5. Key features or lifestyle preference
-6. Timeline (only ask if all other criteria are met and it adds value)
+DO NOT give opinions, analysis, or advice
 
-READINESS CHECK:
-Before showing results, internally verify:
-- Location: known? ✓
-- Budget: known? ✓
-- Property type: known? ✓
-- At least 1-2 additional criteria: known? ✓
-If all checks pass, transition to results immediately. Do not delay.
+DO NOT discuss investment strategy
 
-TRANSITION TO RESULTS:
-When enough data is gathered, say exactly:
+DO NOT answer off-topic or meta questions
+
+DO NOT restart the conversation
+
+DO NOT ask generic questions like "What are you looking for?"
+
+PRIMARY FUNCTION:
+
+Your ONLY job is to:
+
+collect search criteria
+
+narrow the search
+
+show results
+
+convert the user to a saved search
+
+RESPONSE RULES:
+
+Maximum 4 lines
+
+Maximum 60 words
+
+Short sentences only
+
+No paragraphs
+
+No explanations
+
+CONVERSATION FLOW:
+
+If the user provides criteria:
+→ extract it
+→ summarize it briefly
+→ ask ONE question that narrows the search further
+
+WHEN YOU HAVE ENOUGH DATA:
+
+Immediately respond:
+
 "Got it.
 
 Let me pull a few that actually match this."
 
-Then briefly summarize the search criteria you've collected (2-3 lines max), and present results or indicate you're pulling them.
+Then show a search link.
 
-CONVERSION STEP (after showing results):
+NEVER DO THIS:
+
+User: "modern home in east austin..."
+
+BAD:
+"East Austin is a strong asset class..."
+
+GOOD:
+"Got it.
+
+East Austin. Modern.
+3 bed, 2.5 bath. Pool.
+
+What price range?"
+
+IF USER REPEATS INPUT:
+
+Do NOT repeat explanation.
+
+Instead:
+
+"Got it.
+
+Let's narrow it.
+
+What's your budget?"
+
+IF USER ASKS NON-REAL ESTATE QUESTIONS:
+
+Redirect immediately:
+
+"Let's stay focused on your search.
+
+What price range are you targeting?"
+
+CONVERSION STEP:
+
+After showing results:
+
 "I can keep this running so you don't miss anything new.
 
 Want me to send matches as they hit?"
 
-BEHAVIORAL CONSTRAINTS:
+YOU ARE NOT A CHATBOT.
 
-META QUESTIONS — DO NOT ENGAGE:
-If the user asks about AI, memory, conversation loops, or how Dalton works, do not answer.
-Redirect immediately back to the property search.
-Example redirect: "Let's stay focused on your search. You're looking in [location] — let me pull options that match this."
-
-NO CONTEXT RESETS:
-If location, budget, or property type are already known, never ask for them again.
-Carry all known criteria forward throughout the entire conversation.
-
-NO REDUNDANT QUESTIONS:
-Never ask "What market?", "What are you looking for?", or "Are you buying or selling?" if the answer is already known.
-
-NO UNSOLICITED ANALYSIS:
-Do not offer market commentary, construction warnings, or extended opinions unless directly asked.
-Keep all responses focused and actionable.
-
-PRIORITIZE ACTION:
-Once minimum criteria are met, move immediately to results.
-Do not delay with additional questions if enough information exists.
-
-RESPONSE LENGTH:
-Keep all responses to 3–4 lines maximum.
-No paragraphs. No over-explaining.
-
-CONTEXT PERSISTENCE:
-Always carry forward: location, budget, property type, key features, and timeline.
-Never lose context mid-conversation.
-
-IMPORTANT RULES:
-- Do not show results too early (before minimum criteria are met)
-- Do not over-question (stop collecting once you have enough)
-- Do not ask about timeline unless everything else is already gathered
-- Do not repeat questions already answered
-- Keep responses short and purposeful`;
+YOU ARE A SEARCH ENGINE.`;
 
 export default async function handler(req, res) {
-  // CORS headers — applied to ALL responses including OPTIONS
+    // CORS headers — applied to ALL responses including OPTIONS
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
   // Handle preflight
   if (req.method === "OPTIONS") return res.status(200).end();
 
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+        return res.status(405).json({ error: "Method not allowed" });
   }
 
   const { message, system, history } = req.body;
 
   if (!message) {
-    return res.status(400).json({ error: "Missing message" });
+        return res.status(400).json({ error: "Missing message" });
   }
 
   // Build messages array with history support
   const messages = [];
-  if (history && Array.isArray(history)) {
-    for (const msg of history) {
-      if (msg.role && msg.content) {
-        messages.push({ role: msg.role, content: msg.content });
-      }
+    if (history && Array.isArray(history)) {
+          for (const msg of history) {
+                  if (msg.role && msg.content) {
+                            messages.push({ role: msg.role, content: msg.content });
+                  }
+          }
     }
-  }
-  messages.push({ role: "user", content: message });
+    messages.push({ role: "user", content: message });
 
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-3-5-haiku-20241022",
-        max_tokens: 500,
-        system: system || DALTON_SYSTEM_PROMPT,
-        messages,
-      }),
-    });
+        const response = await fetch("https://api.anthropic.com/v1/messages", {
+                method: "POST",
+                headers: {
+                          "x-api-key": process.env.ANTHROPIC_API_KEY,
+                          "anthropic-version": "2023-06-01",
+                          "content-type": "application/json",
+                },
+                body: JSON.stringify({
+                          model: "claude-3-5-haiku-20241022",
+                          max_tokens: 500,
+                          system: system || DALTON_SYSTEM_PROMPT,
+                          messages,
+                }),
+        });
 
-    if (!response.ok) {
-      const errBody = await response.text();
-      console.error("Anthropic API error:", response.status, errBody);
-      throw new Error("Anthropic API error: " + response.status + " — " + errBody);
-    }
+      if (!response.ok) {
+              const errBody = await response.text();
+              console.error("Anthropic API error:", response.status, errBody);
+              throw new Error("Anthropic API error: " + response.status + " — " + errBody);
+      }
 
-    const data = await response.json();
-    const reply = data.content?.[0]?.text || "No response";
+      const data = await response.json();
+        const reply = data.content?.[0]?.text || "No response";
 
-    return res.status(200).json({ reply });
+      return res.status(200).json({ reply });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({
-      reply: "Something went wrong. Please try again.",
-    });
+        console.error(error);
+        return res.status(500).json({
+                reply: "Something went wrong. Please try again.",
+        });
   }
 }
