@@ -147,7 +147,8 @@ export default async function handler(req, res) {
                 },
                 body: JSON.stringify({
                           model: "claude-3-5-haiku-20241022",
-                          max_tokens: 500,
+                          max_tokens: 100,
+                          temperature:.5,
                           system: system || DALTON_SYSTEM_PROMPT,
                           messages,
                 }),
