@@ -127,7 +127,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: "claude-3-5-haiku-20241022",
-        max_tokens: 100,
+        max_tokens: 80,
         temperature: 0.3,
         system: DALTON_SYSTEM_PROMPT,
         messages: [
@@ -138,7 +138,7 @@ export default async function handler(req, res) {
             }))),
           {
             role: "user",
-            content: message,
+            content: message + history,
           },
         ],
       }),
