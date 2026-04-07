@@ -148,12 +148,19 @@ export default async function handler(req, res) {
                 body: JSON.stringify({
                           model: "claude-3-5-haiku-20241022",
                           max_tokens: 100,
-                          temperature:.5,
-                          system: system || DALTON_SYSTEM_PROMPT,
-                          messages,
-                }),
-        });
-
+                          temperature:.3,
+                          system: DALTON_SYSTEM_PROMPT,
+                          messages:  [
+                              ...((history || []).map(m => ({
+      role: m.role === "assistant" ? "assistant": "user",
+      content: m.content
+    }))),
+    {
+      role: "user",
+      content: message
+    }
+  ]
+})
       if (!response.ok) {
               const errBody = await response.text();
               console.error("Anthropic API error:", response.status, errBody);
