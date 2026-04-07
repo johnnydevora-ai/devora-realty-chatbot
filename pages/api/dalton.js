@@ -55,6 +55,36 @@ CONVERSION STEP (after showing results):
 
 Want me to send matches as they hit?"
 
+BEHAVIORAL CONSTRAINTS:
+
+META QUESTIONS — DO NOT ENGAGE:
+If the user asks about AI, memory, conversation loops, or how Dalton works, do not answer.
+Redirect immediately back to the property search.
+Example redirect: "Let's stay focused on your search. You're looking in [location] — let me pull options that match this."
+
+NO CONTEXT RESETS:
+If location, budget, or property type are already known, never ask for them again.
+Carry all known criteria forward throughout the entire conversation.
+
+NO REDUNDANT QUESTIONS:
+Never ask "What market?", "What are you looking for?", or "Are you buying or selling?" if the answer is already known.
+
+NO UNSOLICITED ANALYSIS:
+Do not offer market commentary, construction warnings, or extended opinions unless directly asked.
+Keep all responses focused and actionable.
+
+PRIORITIZE ACTION:
+Once minimum criteria are met, move immediately to results.
+Do not delay with additional questions if enough information exists.
+
+RESPONSE LENGTH:
+Keep all responses to 3–4 lines maximum.
+No paragraphs. No over-explaining.
+
+CONTEXT PERSISTENCE:
+Always carry forward: location, budget, property type, key features, and timeline.
+Never lose context mid-conversation.
+
 IMPORTANT RULES:
 - Do not show results too early (before minimum criteria are met)
 - Do not over-question (stop collecting once you have enough)
@@ -63,65 +93,65 @@ IMPORTANT RULES:
 - Keep responses short and purposeful`;
 
 export default async function handler(req, res) {
-        // CORS headers — applied to ALL responses including OPTIONS
-    res.setHeader("Access-Control-Allow-Origin", "*");
-        res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-        res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  // CORS headers — applied to ALL responses including OPTIONS
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    // Handle preflight
-    if (req.method === "OPTIONS") return res.status(200).end();
+  // Handle preflight
+  if (req.method === "OPTIONS") return res.status(200).end();
 
-    if (req.method !== "POST") {
-                return res.status(405).json({ error: "Method not allowed" });
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const { message, system, history } = req.body;
+
+  if (!message) {
+    return res.status(400).json({ error: "Missing message" });
+  }
+
+  // Build messages array with history support
+  const messages = [];
+  if (history && Array.isArray(history)) {
+    for (const msg of history) {
+      if (msg.role && msg.content) {
+        messages.push({ role: msg.role, content: msg.content });
+      }
+    }
+  }
+  messages.push({ role: "user", content: message });
+
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": process.env.ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-3-5-haiku-20241022",
+        max_tokens: 500,
+        system: system || DALTON_SYSTEM_PROMPT,
+        messages,
+      }),
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      console.error("Anthropic API error:", response.status, errBody);
+      throw new Error("Anthropic API error: " + response.status + " — " + errBody);
     }
 
-    const { message, system, history } = req.body;
+    const data = await response.json();
+    const reply = data.content?.[0]?.text || "No response";
 
-    if (!message) {
-                return res.status(400).json({ error: "Missing message" });
-    }
-
-    // Build messages array with history support
-    const messages = [];
-        if (history && Array.isArray(history)) {
-                    for (const msg of history) {
-                                    if (msg.role && msg.content) {
-                                                        messages.push({ role: msg.role, content: msg.content });
-                                    }
-                    }
-        }
-        messages.push({ role: "user", content: message });
-
-    try {
-                const response = await fetch("https://api.anthropic.com/v1/messages", {
-                                method: "POST",
-                                headers: {
-                                                    "x-api-key": process.env.ANTHROPIC_API_KEY,
-                                                    "anthropic-version": "2023-06-01",
-                                                    "content-type": "application/json",
-                                },
-                                body: JSON.stringify({
-                                                    model: "claude-3-5-haiku-20241022",
-                                                    max_tokens: 500,
-                                                    system: system || DALTON_SYSTEM_PROMPT,
-                                                    messages,
-                                }),
-                });
-
-            if (!response.ok) {
-                            const errBody = await response.text();
-                            console.error("Anthropic API error:", response.status, errBody);
-                            throw new Error("Anthropic API error: " + response.status + " — " + errBody);
-            }
-
-            const data = await response.json();
-                const reply = data.content?.[0]?.text || "No response";
-
-            return res.status(200).json({ reply });
-    } catch (error) {
-                console.error(error);
-                return res.status(500).json({
-                                reply: "Something went wrong. Please try again.",
-                });
-    }
+    return res.status(200).json({ reply });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      reply: "Something went wrong. Please try again.",
+    });
+  }
 }
