@@ -127,11 +127,11 @@ export default async function handler(req, res) {
                   method: "POST",
                   headers: {
                               "x-api-key": process.env.ANTHROPIC_API_KEY,
-                              "anthropic-version": "2023-06-01",
+                              "anthropic-version": "2024-10-22",
                               "content-type": "application/json",
                   },
                   body: JSON.stringify({
-                              model: "claude-3-5-haiku-latest",
+                              model: "claude-haiku-4-5-20251001",
                               max_tokens: 120,
                               temperature: 0.2,
                               system: DALTON_SYSTEM_PROMPT,
