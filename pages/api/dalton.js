@@ -7,7 +7,7 @@ You are a real estate search filter.
 
 YOU ONLY DO THIS:
 
-- Extract criteria
+- Extract criteri
 - Summarize criteria
 - Ask ONE question to narrow the search
 
@@ -131,7 +131,7 @@ export default async function handler(req, res) {
                               "content-type": "application/json",
                   },
                   body: JSON.stringify({
-                              model: "claude-3-5-haiku-20241022",
+                              model: "claude-haiku-4-5-20251001",
                               max_tokens: 120,
                               temperature: 0.2,
                               system: DALTON_SYSTEM_PROMPT,
