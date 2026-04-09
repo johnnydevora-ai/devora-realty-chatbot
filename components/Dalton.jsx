@@ -195,7 +195,7 @@ const DaltonIcon = () => (
                 fill="rgba(255,255,255,0.8)"/>
         <path d="M14.5 11 L15 12 L16 12.5 L15 13 L14.5 14 L14 13 L13 12.5 L14 12 Z"
                 fill="rgba(255,255,255,0.8)"/>
-    </svg>svg>
+    </svg>
   );
 
 const ArrowIcon = () => (
@@ -205,7 +205,7 @@ const ArrowIcon = () => (
                 strokeWidth="1.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"/>
-    </svg>svg>
+    </svg>
   );
 
 export default function Dalton({ isOpen, onClose }) {
