@@ -57,7 +57,7 @@ East Austin.
 
 Any must-haves like a pool or newer build?
 
----
+--
 
 IF YOU HAVE ENOUGH DATA:
 
@@ -131,7 +131,7 @@ export default async function handler(req, res) {
                               "content-type": "application/json",
                   },
                   body: JSON.stringify({
-                              model: "claude-3-haiku-20240307",
+                              model: "claude-3-5-haiku-20241022",
                               max_tokens: 120,
                               temperature: 0.2,
                               system: DALTON_SYSTEM_PROMPT,
