@@ -260,7 +260,7 @@ export default function Dalton({ isOpen, onClose }) {
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
                                         message: trimmed,
-                                        history: messages.map(m => ({ role: m.role, content: m.content })),
+                                        history: [...messages.map(m => ({ role: m.role, content: m.content })), { role: "user", content: trimmed }],
                             }),
                   });
                   const data = await res.json();
