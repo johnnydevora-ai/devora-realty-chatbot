@@ -94,13 +94,30 @@ You can run a search when you have:
 
   SEARCH BEHAVIOR:
 
-  When you're ready, do NOT explain.
+  When you have enough data:
 
-  Respond ONLY with:
+  Respond with TWO parts:
+  1. A short, natural message to the user
+  2. The SEARCH_READY line
+
+  FORMAT:
+
+  [Human response]
+
+  SEARCH_READY:{...}
+
+  EXAMPLE:
+
+  That's tight enough to search.
 
   SEARCH_READY:{"city":"Austin","area":"East Austin","beds":3,"baths":2,"maxPrice":1000000,"type":"Residential","features":["pool"]}
 
-  No extra words.
+  RULES:
+  - The human message must be short (1 sentence)
+  - No explanations
+  - No extra commentary
+  - SEARCH_READY must always be included when ready
+  - SEARCH_READY must remain EXACTLY formatted as shown
 
   ---
 
@@ -259,14 +276,16 @@ export default async function handler(req, res) {
                     const reply = data.content?.[0]?.text || "No response";
 
                 // --- SEARCH_READY detection ---
-                if (reply.trim().startsWith("SEARCH_READY:")) {
+                if (reply.includes("SEARCH_READY:")) {
                                     try {
-                                                            const jsonStr = reply.trim().replace("SEARCH_READY:", "");
+                                                            const searchReadyMatch = reply.match(/SEARCH_READY:(\{.*\})/s);
+                                                            const jsonStr = searchReadyMatch[1];
                                                             const criteria = JSON.parse(jsonStr);
                                                             const searchUrl = buildSearchUrl(criteria);
                                                             console.log("🔍 SEARCH URL:", searchUrl);
+                                                            const humanMessage = reply.split("SEARCH_READY:")[0].trim();
                                                             return res.status(200).json({
-                                                                                        reply: "Got it. Let me pull your matches.",
+                                                                                        reply: humanMessage || "Got it. Let me pull your matches.",
                                                                                         searchUrl: searchUrl,
                                                             });
                                     } catch (parseErr) {
