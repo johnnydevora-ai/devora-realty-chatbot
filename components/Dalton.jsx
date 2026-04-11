@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 
-// DALTON UI v2 Ã¢ÂÂ Luxury Control Panel
+// DALTON UI v2 — Luxury Control Panel
 // Minimal. Matte. Confident. No noise.
 
 const daltonStyles = `
@@ -409,7 +409,7 @@ export default function Dalton({ isOpen, onClose }) {
             {/* OVERLAY */}
                 <div className="dalton-overlay" onClick={onClose} />
                 
-            {/* WIDGET PANEL Ã¢ÂÂ bottom right, 360px */}
+            {/* WIDGET PANEL — bottom right, 360px */}
                 <div className={`dalton-panel${mounted ? " dalton-open" : ""}`}>
                         
                   {/* HEADER LABEL */}
@@ -418,12 +418,12 @@ export default function Dalton({ isOpen, onClose }) {
                   {/* PRIMARY HOOK */}
                         <div className="dalton-hook">Stop the scroll.</div>
                         
-                  {/* SECONDARY COPY Ã¢ÂÂ shown until user starts typing */}
+                  {/* SECONDARY COPY — shown until user starts typing */}
                   {!started && (
                       <div className="dalton-sub">{`Tell me what you're actually looking for.\n\nI'll narrow it down.`}</div>
                         )}
                         
-                  {/* MESSAGES Ã¢ÂÂ shown after first send */}
+                  {/* MESSAGES — shown after first send */}
                   {started && messages.length > 0 && (
                       <div className="dalton-messages">
                         {messages.map((msg, i) => (
@@ -431,17 +431,17 @@ export default function Dalton({ isOpen, onClose }) {
                                         {msg.content}
                                       </div>
                                     ))}
-                        {loading && <div className="dalton-thinking">narrowing it downÃ¢ÂÂ¦</div>}
+                        {loading && <div className="dalton-thinking">narrowing it down…</div>}
                                   <div ref={bottomRef} />
                       </div>
                         )}
                   {started && messages.length === 0 && loading && (
                       <div className="dalton-messages">
-                                  <div className="dalton-thinking">narrowing it downÃ¢ÂÂ¦</div>
+                                  <div className="dalton-thinking">narrowing it down…</div>
                       </div>
                         )}
                 
-                  {/* SEARCH RESULTS BUTTON Ã¢ÂÂ shown when Dalton has a search URL */}
+                  {/* SEARCH RESULTS BUTTON — shown when Dalton has a search URL */}
                   {searchUrl && (
                       <a
                                     className="dalton-search-btn"
@@ -449,11 +449,11 @@ export default function Dalton({ isOpen, onClose }) {
                                     target="_blank"
                                     rel="noopener noreferrer"
                                   >
-                                  View Your Matches Ã¢ÂÂ
+                                  View Your Matches →
                       </a>
                         )}
                         
-                  {/* INPUT ROW Ã¢ÂÂ hidden once search is ready */}
+                  {/* INPUT ROW — hidden once search is ready */}
                   {!searchUrl && (
                       <div className="dalton-input-row">
                                   <input
@@ -479,7 +479,7 @@ export default function Dalton({ isOpen, onClose }) {
         );
 }
 
-// Trigger button Ã¢ÂÂ exported for use in index.jsx
+// Trigger button — exported for use in index.jsx
 export function DaltonTrigger({ onClick }) {
     return (
           <>
