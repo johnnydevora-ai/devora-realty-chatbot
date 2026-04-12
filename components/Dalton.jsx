@@ -333,7 +333,6 @@ export default function Dalton({ isOpen, onClose }) {
   const [started, setStarted] = useState(false);
   const [searchUrl, setSearchUrl] = useState(null);
   const [criteria, setCriteria] = useState({});
-  const [criteria, setCriteria] = useState({});
   const bottomRef = useRef(null);
   const messagesRef = useRef([]);
 
@@ -358,7 +357,6 @@ export default function Dalton({ isOpen, onClose }) {
       setMessages([]);
       setInput("");
       setSearchUrl(null);
-      setCriteria({});
       setCriteria({});
     }
   }, [isOpen]);
@@ -391,13 +389,33 @@ export default function Dalton({ isOpen, onClose }) {
         { role: "user", content: trimmed }
       ];
 
+      // 🔥 SYSTEM-LEVEL SEARCH TRIGGER
+      const extracted = extractCriteria([...messagesRef.current, userMessage])
+
+      const ready =
+        (extracted.city || extracted.area || extracted.zip) &&
+        extracted.maxPrice &&
+        (extracted.beds || extracted.baths || (extracted.features || []).length)
+
+      if (ready) {
+        const url = clientBuildSearchUrl(extracted)
+
+        setMessages(prev => [
+          ...prev,
+          { role: "assistant", content: "Got it. Pulling options for you now." }
+        ])
+
+        setSearchUrl(url)
+        return
+      }
+
+
       const res = await fetch("/api/dalton", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message: trimmed,
             history: history,
-            criteria: criteria,
             criteria: criteria,
           }),
       });
@@ -411,39 +429,8 @@ export default function Dalton({ isOpen, onClose }) {
           { role: "user", content: trimmed },
           { role: "assistant", content: reply }
         ];
-        const extracted = extractCriteria(fullConvoForCriteria);
-        setCriteria(extracted);
-
-
-        // Extract and persist criteria from conversation
-        const fullConvoForCriteria = [
-          ...currentMessages,
-          { role: "user", content: trimmed },
-          { role: "assistant", content: reply }
-        ];// 🔥 SYSTEM-LEVEL SEARCH TRIGGER
-
-const extracted = extractCriteria([...messagesRef.current, userMessage])
-
-const ready =
-  (extracted.city || extracted.area || extracted.zip) &&
-  extracted.maxPrice &&
-  (extracted.beds || extracted.baths || (extracted.features || []).length)
-
-if (ready) {
-  const url = clientBuildSearchUrl(extracted)
-
-  setMessages(prev => [
-    ...prev,
-    { role: "assistant", content: "Got it. Pulling options for you now." }
-  ])
-
-  setSearchUrl(url)
-  return
-}
-        const extracted = extractCriteria(fullConvoForCriteria);
-        setCriteria(extracted);
-
-
+        const updatedCriteria = extractCriteria(fullConvoForCriteria);
+        setCriteria(updatedCriteria);
       // Check if the API returned a search URL
       if (data.searchUrl) {
         setSearchUrl(data.searchUrl);
@@ -454,9 +441,9 @@ if (ready) {
           { role: "user", content: trimmed },
           { role: "assistant", content: reply }
         ];
-        const criteria = extractCriteria(fullConvo);
-        if (hasEnoughCriteria(criteria)) {
-          const url = clientBuildSearchUrl(criteria);
+        const fallbackCriteria = extractCriteria(fullConvo);
+        if (hasEnoughCriteria(fallbackCriteria)) {
+          const url = clientBuildSearchUrl(fallbackCriteria);
           setSearchUrl(url);
           setMessages(prev => [
             ...prev,
