@@ -333,6 +333,7 @@ export default function Dalton({ isOpen, onClose }) {
   const [started, setStarted] = useState(false);
   const [searchUrl, setSearchUrl] = useState(null);
   const [criteria, setCriteria] = useState({});
+  const [criteria, setCriteria] = useState({});
   const bottomRef = useRef(null);
   const messagesRef = useRef([]);
 
@@ -357,6 +358,7 @@ export default function Dalton({ isOpen, onClose }) {
       setMessages([]);
       setInput("");
       setSearchUrl(null);
+      setCriteria({});
       setCriteria({});
     }
   }, [isOpen]);
@@ -396,11 +398,22 @@ export default function Dalton({ isOpen, onClose }) {
             message: trimmed,
             history: history,
             criteria: criteria,
+            criteria: criteria,
           }),
       });
       const data = await res.json();
       const reply = data.reply || data.message || "Sorry, I didn't get a response.";
       setMessages(prev => [...prev, { role: "assistant", content: reply }]);
+
+        // Extract and persist criteria from conversation
+        const fullConvoForCriteria = [
+          ...currentMessages,
+          { role: "user", content: trimmed },
+          { role: "assistant", content: reply }
+        ];
+        const extracted = extractCriteria(fullConvoForCriteria);
+        setCriteria(extracted);
+
 
         // Extract and persist criteria from conversation
         const fullConvoForCriteria = [
