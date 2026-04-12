@@ -274,18 +274,49 @@ function extractCriteria(msgs) {
 function clientBuildSearchUrl(criteria) {
   const base = 'https://devorarealty.com/properties/';
   const params = new URLSearchParams();
-  if (criteria.city) params.set('search', criteria.city);
-  else if (criteria.zip) params.set('search', criteria.zip);
-  else if (criteria.area) params.set('search', criteria.area);
+
+  // ZIP code mapping for broad regions
+  const AREA_MAP = {
+    "east austin": ["78702", "78721", "78722", "78723"],
+    "south austin": ["78704", "78745", "78748"],
+    "north austin": ["78758", "78759"],
+    "west austin": ["78746", "78733"]
+  };
+
+  // City takes priority
+  if (criteria.city) {
+    const cityKey = criteria.city.toLowerCase();
+    const mappedZips = AREA_MAP[cityKey];
+    if (mappedZips) {
+      mappedZips.forEach(zip => params.append("zip", zip));
+    } else {
+      params.set('search', criteria.city);
+    }
+  } else if (criteria.zip) {
+    params.set('search', criteria.zip);
+  } else if (criteria.area) {
+    const areaKey = criteria.area.toLowerCase();
+    const mappedZips = AREA_MAP[areaKey];
+    if (mappedZips) {
+      mappedZips.forEach(zip => params.append("zip", zip));
+    } else {
+      params.append("search", criteria.area);
+    }
+  }
+
   if (criteria.beds) params.set('beds', String(criteria.beds));
   if (criteria.baths) params.set('baths', String(criteria.baths));
   if (criteria.maxPrice) params.set('maxPrice', String(criteria.maxPrice));
   if (criteria.type && criteria.type !== 'Residential') params.set('type', criteria.type);
-  if (criteria.features && criteria.features.length > 0) params.set('features', criteria.features.join(','));
+
+  // Clean feature pass-through
+  (criteria.features || []).forEach(f => {
+    params.append("feature", f);
+  });
+
   const qs = params.toString();
   return qs ? base + '?' + qs : base;
 }
-
 function hasEnoughCriteria(criteria) {
   const hasLocation = !!(criteria.city || criteria.zip || criteria.area);
   const hasBudget = !!criteria.maxPrice;
