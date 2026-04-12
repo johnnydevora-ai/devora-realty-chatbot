@@ -260,7 +260,7 @@ export default async function handler(req, res) {
                                     headers: {
                                                             "x-api-key": process.env.ANTHROPIC_API_KEY,
                                                             "anthropic-version": "2023-06-01",
-                                                       claude-sonnet-4-6plication/json",
+                                                            "content-type": "application/json"                    
                                     },
                                     body: JSON.stringify({
                                                             model: "claude-sonnet-4-6",
