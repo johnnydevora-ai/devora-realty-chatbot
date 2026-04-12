@@ -420,7 +420,26 @@ export default function Dalton({ isOpen, onClose }) {
           ...currentMessages,
           { role: "user", content: trimmed },
           { role: "assistant", content: reply }
-        ];
+        ];// 🔥 SYSTEM-LEVEL SEARCH TRIGGER
+
+const extracted = extractCriteria([...messagesRef.current, userMessage])
+
+const ready =
+  (extracted.city || extracted.area || extracted.zip) &&
+  extracted.maxPrice &&
+  (extracted.beds || extracted.baths || (extracted.features || []).length)
+
+if (ready) {
+  const url = clientBuildSearchUrl(extracted)
+
+  setMessages(prev => [
+    ...prev,
+    { role: "assistant", content: "Got it. Pulling options for you now." }
+  ])
+
+  setSearchUrl(url)
+  return
+}
         const extracted = extractCriteria(fullConvoForCriteria);
         setCriteria(extracted);
 
