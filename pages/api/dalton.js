@@ -260,10 +260,10 @@ export default async function handler(req, res) {
                                     headers: {
                                                             "x-api-key": process.env.ANTHROPIC_API_KEY,
                                                             "anthropic-version": "2023-06-01",
-                                                            "content-type": "application/json",
+                                                       claude-sonnet-4-6plication/json",
                                     },
                                     body: JSON.stringify({
-                                                            model: "claude-3-5-sonnet-20241022",
+                                                            model: "claude-sonnet-4-6",
                                                             max_tokens: 300,
                                                             temperature: 0.2,
                                                             system: DALTON_SYSTEM_PROMPT,
