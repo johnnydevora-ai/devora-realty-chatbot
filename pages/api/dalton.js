@@ -119,30 +119,30 @@ You can run a search when you have:
 
   SEARCH BEHAVIOR:
 
-  When you have enough data:
+When you have enough data:
 
-  Respond with TWO parts:
-  1. A short, natural message to the user
-  2. The SEARCH_READY line
+Respond with TWO parts:
+1. A short, natural message to the user
+2. The SEARCH_READY line
 
-  FORMAT:
+FORMAT:
 
-  [Human response]
+[Human response]
 
-  SEARCH_READY:{...}
+SEARCH_READY:{...}
 
-  EXAMPLE:
+EXAMPLE:
 
-  That's tight enough to search.
+That's tight enough to search.
 
-  SEARCH_READY:{"city":"Austin","area":"East Austin","beds":3,"baths":2,"maxPrice":1000000,"type":"Residential","features":["pool"]}
+SEARCH_READY:{"city":"Austin","area":"East Austin","beds":3,"baths":2,"maxPrice":1000000,"type":"Residential","features":["pool"]}
 
-  RULES:
-  - The human message must be short (1 sentence)
-  - No explanations
-  - No extra commentary
-  - SEARCH_READY must always be included when ready
-  - SEARCH_READY must remain EXACTLY formatted as shown
+RULES:
+- The human message must be short (1 sentence)
+- No explanations
+- No extra commentary
+- SEARCH_READY must always be included when ready
+- SEARCH_READY must remain EXACTLY formatted as shown
 
   ---
 
