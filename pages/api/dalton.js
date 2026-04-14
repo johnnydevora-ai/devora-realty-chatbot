@@ -267,7 +267,7 @@ export default async function handler(req, res) {
       console.log("Message:", message);
       console.log("History length:", history?.length || 0);
       console.log("Messages sent to API:", messages.length);
-      console.log("API Key exists:", !!process.env.OPEN_API_KEY);
+      console.log("API Key exists:", !!process.env.OPENAI_API_KEY);
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
