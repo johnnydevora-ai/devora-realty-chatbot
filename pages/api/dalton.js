@@ -263,38 +263,75 @@ export default async function handler(req, res) {
     }
 
     try {
-                    console.log("🚀 DALTON REQUEST START");
-                    console.log("Message:", message);
-                    console.log("History length:", history?.length || 0);
-                    console.log("Messages sent to API:", messages.length);
-                    console.log("API Key exists:", !!process.env.$ANTHROPIC_API_KEY);
+      console.log("🚀 DALTON REQUEST START");
+      console.log("Message:", message);
+      console.log("History length:", history?.length || 0);
+      console.log("Messages sent to API:", messages.length);
+      console.log("API Key exists:", !!process.env.OPENAI_API_KEY);
 
-                const response = await fetch("https://api.anthropic.com/v1/messages", {
-                                    method: "POST",
-                                    headers: {
-                                      "x-api-key": process.env.$ANTHROPIC_API_KEY,
-                                      "anthropic-version": "2023-06-01",
-                                      "content-type": "application/json"
-},
-                                    body: JSON.stringify({
-                                                            model: "claude-opus-4-6",
-                                                            max_tokens: 300,
-                                                            temperature: 0.2,
-                                                            system: DALTON_SYSTEM_PROMPT,
-                                                            messages: messages,
-                                    }),
-                });
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${process.env.Open_API_Key}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini", // 🔥 use this
+      temperature: 0.2,
+      messages: [
+        {
+          role: "system",
+          content: DALTON_SYSTEM_PROMPT
+        },
+        ...messages
+      ]
+    })
+  });
 
-                const rawText = await response.text();
+  const data = await response.json();
 
-                console.log("🔥 STATUS:", response.status);
-                    console.log("🔥 RAW RESPONSE:", rawText);
+  console.log("🔥 STATUS:", response.status);
+  console.log("🔥 RAW RESPONSE:", data);
 
-                if (!response.ok) {
-                  console.error("❌ ANTHROPIC ERROR:", rawText);
-                  return res.status(500).json({
-                    reply: "API ERROR",
-                    error: rawText,
+  if (!response.ok) {
+    console.error("❌ OPENAI ERROR:", data);
+    return res.status(500).json({
+      reply: "API ERROR",
+      error: data
+    });
+  }
+
+  const reply = data.choices?.[0]?.message?.content || "No response";
+
+  // --- SEARCH_READY detection ---
+  if (reply.includes("SEARCH_READY:")) {
+    try {
+      const match = reply.match(/SEARCH_READY:(\{.*\})/s);
+      const criteria = JSON.parse(match[1]);
+      const searchUrl = buildSearchUrl(criteria);
+
+      const humanMessage = reply.split("SEARCH_READY:")[0].trim();
+
+      return res.status(200).json({
+        reply: humanMessage || "Got it. Pulling options for you now.",
+        searchUrl
+      });
+    } catch (err) {
+      console.error("❌ SEARCH_READY PARSE ERROR:", err);
+      return res.status(200).json({ reply });
+    }
+  }
+
+  return res.status(200).json({ reply });
+
+} catch (error) {
+  console.error("❌ DALTON BACKEND ERROR:", error);
+
+  return res.status(500).json({
+    reply: "Something went wrong. Please try again.",
+    error: error.message,
+  });
+}
                   });
                 }
               
