@@ -200,134 +200,104 @@ You can run a search when you have:
 
 // Helper: build devorarealty.com search URL from parsed criteria
 function buildSearchUrl(criteria) {
-            const base = "https://devorarealty.com/properties/";
-            const params = new URLSearchParams();
+  const base = "https://devorarealty.com/properties/";
+  const params = new URLSearchParams();
 
-    if (criteria.search) params.set("search", criteria.search);
-            if (criteria.city) params.set("search", criteria.city);
-            if (criteria.area) params.set("search", criteria.area);
-            if (criteria.beds) params.set("beds", String(criteria.beds));
-            if (criteria.baths) params.set("baths", String(criteria.baths));
-            if (criteria.minPrice) params.set("minPrice", String(criteria.minPrice));
-            if (criteria.maxPrice) params.set("maxPrice", String(criteria.maxPrice));
-            if (criteria.type && criteria.type !== "Residential") params.set("type", criteria.type);
-            if (criteria.minSqft) params.set("minSqft", String(criteria.minSqft));
-            if (criteria.maxSqft) params.set("maxSqft", String(criteria.maxSqft));
-            if (criteria.minLotSize) params.set("minLotSize", String(criteria.minLotSize));
-            if (criteria.maxLotSize) params.set("maxLotSize", String(criteria.maxLotSize));
-            if (criteria.minYearBuilt) params.set("minYearBuilt", String(criteria.minYearBuilt));
-            if (criteria.maxYearBuilt) params.set("maxYearBuilt", String(criteria.maxYearBuilt));
-            if (criteria.status && criteria.status !== "For Sale") params.set("status", criteria.status);
-            if (criteria.features && criteria.features.length > 0) {
-                            params.set("features", criteria.features.join(","));
-            }
+  if (criteria.search) params.set("search", criteria.search);
+  if (criteria.city) params.set("search", criteria.city);
+  if (criteria.area) params.set("search", criteria.area);
+  if (criteria.beds) params.set("beds", String(criteria.beds));
+  if (criteria.baths) params.set("baths", String(criteria.baths));
+  if (criteria.minPrice) params.set("minPrice", String(criteria.minPrice));
+  if (criteria.maxPrice) params.set("maxPrice", String(criteria.maxPrice));
+  if (criteria.type && criteria.type !== "Residential") params.set("type", criteria.type);
+  if (criteria.features && criteria.features.length > 0) {
+    params.set("features", criteria.features.join(","));
+  }
 
-    const qs = params.toString();
-            return qs ? `${base}?${qs}` : base;
+  const qs = params.toString();
+  return qs ? `${base}?${qs}` : base;
 }
 
 export default async function handler(req, res) {
-            // CORS headers — applied to ALL responses including OPTIONS
-    res.setHeader("Access-Control-Allow-Origin", "*");
-            res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-            res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  // CORS
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    // Handle preflight
-    if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method === "OPTIONS") return res.status(200).end();
 
-    if (req.method !== "POST") {
-                    return res.status(405).json({ error: "Method not allowed" });
-    }
-
-    const { message, history } = req.body;
-
-    if (!message) {
-                    return res.status(400).json({ error: "Missing message" });
-    }
-
-    // Build messages array from history
-    // history from the frontend already includes the latest user message,
-    // so we use it directly — do NOT push message again to avoid duplicates.
-    const messages = [];
-            if (history && Array.isArray(history)) {
-                            for (const msg of history) {
-                                                if (msg.role && msg.content) {
-                                                                        messages.push({ role: msg.role, content: msg.content });
-                                                }
-                            }
-            }
-
-    // Fallback: if history was empty or missing, add the current message
-    if (messages.length === 0) {
-                    messages.push({ role: "user", content: message });
-    }
-
-    try {
-      console.log("🚀 DALTON REQUEST START");
-      console.log("Message:", message);
-      console.log("History length:", history?.length || 0);
-      console.log("Messages sent to API:", messages.length);
-      console.log("API Key exists:", !!process.env.OPEN_API_KEY);
-
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-  method: "POST",
-  headers: {
-    "Authorization": `Bearer ${process.env.OPEN_API_KEY}`,
-    "Content-Type": "application/json"
-  },
-  body: JSON.stringify({
-    model: "gpt-4o-mini",
-    messages: [
-      { role: "system", content: "You are a helpful assistant." },
-      { role: "user", content: message }
-    ]
-  })
-});
-
-  // --- SEARCH_READY detection ---
-  if (reply.includes("SEARCH_READY:")) {
-    try {
-  console.log("🚀 DALTON REQUEST START");
-  console.log("Message:", message);
-  console.log("History length:", history?.length || 0);
-  console.log("Messages sent to API:", messages.length);
-  console.log("API Key exists:", !!process.env.OPEN_API_KEY);
-
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${process.env.OPEN_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: "You are a helpful assistant." },
-        { role: "user", content: message }
-      ]
-    })
-  });
-
-  const data = await response.json();
-
-  console.log("🔥 FULL RESPONSE:", JSON.stringify(data, null, 2));
-
-  if (!response.ok) {
-    return res.status(500).json({
-      reply: "API ERROR",
-      error: data
-    });
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const reply = data.choices?.[0]?.message?.content || "No response";
+  const { message, history } = req.body;
 
-  return res.status(200).json({ reply });
+  if (!message) {
+    return res.status(400).json({ error: "Missing message" });
+  }
 
-} catch (error) {
-  console.error("❌ DALTON BACKEND ERROR:", error);
+  // Build message history cleanly
+  const messages = [];
+  if (history && Array.isArray(history)) {
+    for (const msg of history) {
+      if (msg.role && msg.content) {
+        messages.push({ role: msg.role, content: msg.content });
+      }
+    }
+  }
 
-  return res.status(500).json({
-    reply: "Something went wrong. Please try again.",
-    error: error.message,
-  });
+  if (messages.length === 0) {
+    messages.push({ role: "user", content: message });
+  }
+
+  try {
+    console.log("🚀 DALTON REQUEST START");
+    console.log("Message:", message);
+    console.log("Messages sent:", messages.length);
+    console.log("API Key exists:", !!process.env.OPEN_API_KEY);
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.OPEN_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        temperature: 0.2,
+        max_tokens: 300,
+        messages: [
+          {
+            role: "system",
+            content: DALTON_SYSTEM_PROMPT
+          },
+          ...messages
+        ]
+      })
+    });
+
+    const data = await response.json();
+
+    console.log("🔥 OPENAI RESPONSE:", JSON.stringify(data, null, 2));
+
+    if (!response.ok) {
+      return res.status(500).json({
+        reply: "API ERROR",
+        error: data
+      });
+    }
+
+    const reply = data.choices?.[0]?.message?.content || "No response";
+
+    return res.status(200).json({ reply });
+
+  } catch (error) {
+    console.error("❌ DALTON BACKEND ERROR:", error);
+
+    return res.status(500).json({
+      reply: "Something went wrong. Please try again.",
+      error: error.message,
+    });
+  }
 }
