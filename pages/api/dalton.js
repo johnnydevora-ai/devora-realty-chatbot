@@ -272,12 +272,13 @@ export default async function handler(req, res) {
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${process.env.Open_API_Key}`,
+      "Authorization": `Bearer ${process.env.OPEN_API_KEY}`,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
       model: "gpt-4o-mini", // 🔥 use this
       temperature: 0.2,
+      max_tokens: 300, //
       messages: [
         {
           role: "system",
@@ -331,37 +332,4 @@ export default async function handler(req, res) {
     reply: "Something went wrong. Please try again.",
     error: error.message,
   });
-}
-                  });
-                }
-              
-                const data = JSON.parse(rawText);
-                    const reply = data.content?.[0]?.text || "No response";
-
-                // --- SEARCH_READY detection ---
-                if (reply.includes("SEARCH_READY:")) {
-                                    try {
-                                                            const searchReadyMatch = reply.match(/SEARCH_READY:(\{.*\})/s);
-                                                            const jsonStr = searchReadyMatch[1];
-                                                            const criteria = JSON.parse(jsonStr);
-                                                            const searchUrl = buildSearchUrl(criteria);
-                                                            console.log("🔍 SEARCH URL:", searchUrl);
-                                                            const humanMessage = reply.split("SEARCH_READY:")[0].trim();
-                                                            return res.status(200).json({
-                                                                                        reply: humanMessage || "Got it. Let me pull your matches.",
-                                                                                        searchUrl: searchUrl,
-                                                            });
-                                    } catch (parseErr) {
-                                                            console.error("❌ Failed to parse SEARCH_READY JSON:", parseErr);
-                                                            return res.status(200).json({ reply });
-                                    }
-                }
-
-                return res.status(200).json({ reply });
-    } catch (error) {
-                    console.error(error);
-                    return res.status(500).json({
-                                        reply: "Something went wrong. Please try again.",
-                    });
-    }
 }
