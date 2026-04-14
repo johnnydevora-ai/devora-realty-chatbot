@@ -266,17 +266,17 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: "gpt-4o-mini",
         temperature: 0.2,
-        max_tokens: 300,
+        max_tokens: 500,
         messages: [
-          {
-            role: "system",
-            content: DALTON_SYSTEM_PROMPT
-          },
-          ...messages
-        ]
-      })
-    });
-
+    {
+      role: "system",
+      content: DALTON_SYSTEM_PROMPT
+    },
+    ...messages.slice(-6)
+   ]
+  })
+ });
+        
     const data = await response.json();
 
     console.log("🔥 OPENAI RESPONSE:", JSON.stringify(data, null, 2));
