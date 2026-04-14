@@ -223,7 +223,6 @@ function buildSearchUrl(criteria) {
 }
 
 export default async function handler(req, res) {
-  // CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -240,7 +239,6 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Missing message" });
   }
 
-  // Build clean message history
   const messages = [];
   if (Array.isArray(history)) {
     for (const msg of history) {
@@ -253,7 +251,6 @@ export default async function handler(req, res) {
     }
   }
 
-  // Fallback if frontend didn't send history
   if (messages.length === 0) {
     messages.push({ role: "user", content: message });
   }
@@ -303,6 +300,7 @@ export default async function handler(req, res) {
     if (reply.includes("SEARCH_READY:")) {
       try {
         const match = reply.match(/SEARCH_READY:(\{.*\})/s);
+
         if (!match || !match[1]) {
           return res.status(200).json({ reply });
         }
