@@ -291,12 +291,13 @@ export default async function handler(req, res) {
                     console.log("🔥 RAW RESPONSE:", rawText);
 
                 if (!response.ok) {
-                                    return res.status(500).json({
-                                                            reply: "API ERROR",
-                                                            debug: rawText,
-                                    });
+                  console.error("❌ ANTHROPIC ERROR:", rawText);
+                  return res.status(500).json({
+                    reply: "API ERROR",
+                    error: rawText,
+                  });
                 }
-
+              
                 const data = JSON.parse(rawText);
                     const reply = data.content?.[0]?.text || "No response";
 
