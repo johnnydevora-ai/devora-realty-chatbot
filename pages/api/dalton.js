@@ -270,32 +270,49 @@ export default async function handler(req, res) {
       console.log("API Key exists:", !!process.env.OPEN_API_KEY);
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  method: "POST",
+  headers: {
+    "Authorization": `Bearer ${process.env.OPEN_API_KEY}`,
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: "You are a helpful assistant." },
+      { role: "user", content: message }
+    ]
+  })
+});
+
+  // --- SEARCH_READY detection ---
+  if (reply.includes("SEARCH_READY:")) {
+    try {
+  console.log("🚀 DALTON REQUEST START");
+  console.log("Message:", message);
+  console.log("History length:", history?.length || 0);
+  console.log("Messages sent to API:", messages.length);
+  console.log("API Key exists:", !!process.env.OPEN_API_KEY);
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${process.env.OPEN_API_KEY}`,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      model: "gpt-4o-mini", // 🔥 use this
-      temperature: 0.2,
-      max_tokens: 300, //
+      model: "gpt-4o-mini",
       messages: [
-        {
-          role: "system",
-          content: DALTON_SYSTEM_PROMPT
-        },
-        ...messages
+        { role: "system", content: "You are a helpful assistant." },
+        { role: "user", content: message }
       ]
     })
   });
 
   const data = await response.json();
 
-  console.log("🔥 STATUS:", response.status);
-  console.log("🔥 RAW RESPONSE:", data);
+  console.log("🔥 FULL RESPONSE:", JSON.stringify(data, null, 2));
 
   if (!response.ok) {
-    console.error("❌ OPENAI ERROR:", data);
     return res.status(500).json({
       reply: "API ERROR",
       error: data
@@ -303,25 +320,6 @@ export default async function handler(req, res) {
   }
 
   const reply = data.choices?.[0]?.message?.content || "No response";
-
-  // --- SEARCH_READY detection ---
-  if (reply.includes("SEARCH_READY:")) {
-    try {
-      const match = reply.match(/SEARCH_READY:(\{.*\})/s);
-      const criteria = JSON.parse(match[1]);
-      const searchUrl = buildSearchUrl(criteria);
-
-      const humanMessage = reply.split("SEARCH_READY:")[0].trim();
-
-      return res.status(200).json({
-        reply: humanMessage || "Got it. Pulling options for you now.",
-        searchUrl
-      });
-    } catch (err) {
-      console.error("❌ SEARCH_READY PARSE ERROR:", err);
-      return res.status(200).json({ reply });
-    }
-  }
 
   return res.status(200).json({ reply });
 
