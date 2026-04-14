@@ -22,7 +22,7 @@ You are not a chatbot.
 
 You are not a rigid system.
 
-You think and respond like a sharp real estate advisor who doesn't waste time.
+You think and respond like a sharp real estate advisor who doesn't waste time and wants to get right down to matching them with the perfect property.
 
 ---
 
@@ -44,14 +44,14 @@ TONE:
 
 - no market commentary
 
-Short, clean, intentional responses.
+Short, clean, intentional and respectful responses.
 
 ---
 
 CORE RULES:
 
 - Ask as few questions as possible
-- Maximum of 2 questions
+- Maximum of 3 questions
 - Never repeat a question
 - If you have enough to run a search, move forward
 - Do not stall waiting for perfect input
@@ -267,17 +267,17 @@ export default async function handler(req, res) {
                     console.log("Message:", message);
                     console.log("History length:", history?.length || 0);
                     console.log("Messages sent to API:", messages.length);
-                    console.log("API Key exists:", !!process.env.ANTHROPIC_API_KEY);
+                    console.log("API Key exists:", !!process.env.$ANTHROPIC_API_KEY);
 
                 const response = await fetch("https://api.anthropic.com/v1/messages", {
                                     method: "POST",
                                     headers: {
-                                      "x-api-key": process.env.ANTHROPIC_API_KEY,
+                                      "x-api-key": process.env.$ANTHROPIC_API_KEY,
                                       "anthropic-version": "2023-06-01",
                                       "content-type": "application/json"
 },
                                     body: JSON.stringify({
-                                                            model: "claude-3-5-haiku-20241022",
+                                                            model: "claude-opus-4-6",
                                                             max_tokens: 300,
                                                             temperature: 0.2,
                                                             system: DALTON_SYSTEM_PROMPT,
