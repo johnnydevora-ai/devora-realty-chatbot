@@ -198,41 +198,90 @@ RULES:
 
   `;
 
-function buildSearchUrl(criteria) {
-  const base = "https://devorarealty.com/properties/";
-  const params = new URLSearchParams();
-
-  if (criteria.city) params.set("search", criteria.city);
-  if (criteria.area) params.set("search", criteria.area);
-  if (criteria.zip) params.set("search", criteria.zip);
-  if (criteria.beds) params.set("beds", String(criteria.beds));
-  if (criteria.baths) params.set("baths", String(criteria.baths));
-  if (criteria.maxPrice) params.set("maxPrice", String(criteria.maxPrice));
-
-  return `${base}?${params.toString()}`;
+function normalizeText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
 }
 
-// 🔥 SAFE parser (does NOT break flow)
-function extractCriteria(text) {
-  const c = {};
-  const t = text.toLowerCase();
+function getCombinedUserText(messages) {
+  return messages
+    .filter((m) => m.role === "user")
+    .map((m) => normalizeText(m.content))
+    .join(" ")
+    .trim();
+}
 
-  if (t.includes("austin")) c.city = "Austin";
-  if (t.includes("east austin")) c.area = "East Austin";
+// 🔥 Extract signals (simple + reliable)
+function extractSignals(text) {
+  const t = normalizeText(text).toLowerCase();
 
-  const zip = text.match(/787\d{2}/);
-  if (zip) c.zip = zip[0];
+  const signals = {
+    hasLocation: false,
+    hasSignal: false
+  };
 
-  const beds = text.match(/(\d+)\s*bed/);
-  if (beds) c.beds = Number(beds[1]);
+  // LOCATION
+  if (/\baustin|san antonio|east austin|westlake|lakeway|bee cave\b/.test(t)) {
+    signals.hasLocation = true;
+  }
 
-  const baths = text.match(/(\d+)\s*bath/);
-  if (baths) c.baths = Number(baths[1]);
+  if (/\b78\d{3}|79\d{3}\b/.test(t)) {
+    signals.hasLocation = true;
+  }
 
-  const price = text.match(/(\d+(\.\d+)?)\s?m/i);
-  if (price) c.maxPrice = Number(price[1]) * 1000000;
+  // BEDS / BATHS
+  if (/\d+\s*(bed|beds|bedroom)/.test(t)) {
+    signals.hasSignal = true;
+  }
 
-  return c;
+  if (/\d+\s*(bath|baths|bathroom)/.test(t)) {
+    signals.hasSignal = true;
+  }
+
+  // PRICE
+  if (/\d+(\.\d+)?\s*m\b/.test(t) || /\d+\s*k\b/.test(t) || /\$\d+/.test(t)) {
+    signals.hasSignal = true;
+  }
+
+  return signals;
+}
+
+// 🔥 Trigger logic
+function shouldTriggerSearch(combinedText) {
+  const s = extractSignals(combinedText);
+  return s.hasLocation && s.hasSignal;
+}
+
+// 🔥 Build working search URL (THIS IS YOUR ENGINE)
+function buildSearchUrl(text) {
+  return `https://devorarealty.com/properties/?search=${encodeURIComponent(text)}`;
+}
+
+// 🔥 OpenAI call
+async function callOpenAI(messages, prompt) {
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.OPEN_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      temperature: 0.2,
+      max_tokens: 400,
+      messages: [
+        { role: "system", content: prompt },
+        ...messages
+      ]
+    })
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(JSON.stringify(data));
+  }
+
+  return data.choices?.[0]?.message?.content || "No response";
 }
 
 export default async function handler(req, res) {
@@ -241,96 +290,59 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
   if (req.method === "OPTIONS") return res.status(200).end();
+
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
   const { message, history } = req.body || {};
+
   if (!message) {
     return res.status(400).json({ error: "Missing message" });
   }
 
-  // 🔥 BUILD FULL HISTORY (keep this!)
+  // 🔥 Build conversation
   const messages = [];
   if (Array.isArray(history)) {
     for (const msg of history) {
       if (msg?.role && msg?.content) {
-        messages.push({ role: msg.role, content: msg.content });
+        messages.push({
+          role: msg.role,
+          content: normalizeText(msg.content)
+        });
       }
     }
   }
 
-  if (messages.length === 0) {
-    messages.push({ role: "user", content: message });
+  if (!messages.length) {
+    messages.push({ role: "user", content: normalizeText(message) });
   }
 
   try {
+    const combinedText = getCombinedUserText(messages);
+
     console.log("🚀 DALTON REQUEST");
-    console.log("🧠 FINAL MESSAGES:", messages);
+    console.log("Combined:", combinedText);
 
-    // 🔥 STEP 1: check ALL user input for criteria
-    const combinedText = messages
-      .filter(m => m.role === "user")
-      .map(m => m.content)
-      .join(" ");
+    // 🔥 STEP 1 — TRIGGER SEARCH
+    if (shouldTriggerSearch(combinedText)) {
+      const searchUrl = buildSearchUrl(combinedText);
 
-    const extracted = extractCriteria(combinedText);
-
-    const hasLocation =
-      extracted.city || extracted.area || extracted.zip;
-
-    const hasSignal =
-      extracted.maxPrice ||
-      extracted.beds ||
-      extracted.baths;
-
-    // 🚀 🔥 STEP 2: TRIGGER SEARCH EARLY
-    if (hasLocation && hasSignal) {
-      const url = buildSearchUrl(extracted);
+      console.log("🔥 SEARCH TRIGGERED:", searchUrl);
 
       return res.status(200).json({
         reply: "Got it. Pulling options for you now.",
-        searchUrl: url
+        searchUrl
       });
     }
 
-    // 🧠 STEP 3: NORMAL DALTON FLOW
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.OPEN_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        temperature: 0.2,
-        max_tokens: 400,
-        messages: [
-          {
-            role: "system",
-            content: DALTON_SYSTEM_PROMPT
-          },
-          ...messages
-        ]
-      })
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      console.error("❌ OPENAI ERROR:", data);
-      return res.status(500).json({
-        reply: "API ERROR",
-        error: data
-      });
-    }
-
-    const reply = data.choices?.[0]?.message?.content || "No response";
+    // 🔥 STEP 2 — CONVERSATION MODE
+    const reply = await callOpenAI(messages, DALTON_SYSTEM_PROMPT);
 
     return res.status(200).json({ reply });
 
   } catch (error) {
-    console.error("❌ BACKEND ERROR:", error);
+    console.error("❌ DALTON ERROR:", error);
 
     return res.status(500).json({
       reply: "Something went wrong. Please try again.",
