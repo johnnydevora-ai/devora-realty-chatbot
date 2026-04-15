@@ -198,74 +198,74 @@ RULES:
 
   `;
 
-// Helper: build devorarealty.com search URL from parsed criteria
 function buildSearchUrl(criteria) {
   const base = "https://devorarealty.com/properties/";
   const params = new URLSearchParams();
 
-  if (criteria.search) params.set("search", criteria.search);
   if (criteria.city) params.set("search", criteria.city);
   if (criteria.area) params.set("search", criteria.area);
   if (criteria.zip) params.set("search", criteria.zip);
   if (criteria.beds) params.set("beds", String(criteria.beds));
   if (criteria.baths) params.set("baths", String(criteria.baths));
-  if (criteria.minPrice) params.set("minPrice", String(criteria.minPrice));
   if (criteria.maxPrice) params.set("maxPrice", String(criteria.maxPrice));
 
-  if (criteria.type && criteria.type !== "Residential") {
-    params.set("type", criteria.type);
-  }
+  return `${base}?${params.toString()}`;
+}
 
-  if (criteria.features && criteria.features.length > 0) {
-    params.set("features", criteria.features.join(","));
-  }
+// 🔥 SIMPLE CRITERIA PARSER (server-side)
+function extractCriteria(text) {
+  const criteria = {};
 
-  const qs = params.toString();
-  return qs ? `${base}?${qs}` : base;
+  const lower = text.toLowerCase();
+
+  if (lower.includes("austin")) criteria.city = "Austin";
+  if (lower.includes("east austin")) criteria.area = "East Austin";
+
+  const zipMatch = text.match(/787\d{2}/);
+  if (zipMatch) criteria.zip = zipMatch[0];
+
+  const beds = text.match(/(\d+)\s*bed/);
+  if (beds) criteria.beds = Number(beds[1]);
+
+  const baths = text.match(/(\d+)\s*bath/);
+  if (baths) criteria.baths = Number(baths[1]);
+
+  const price = text.match(/(\d+(\.\d+)?)\s?m/i);
+  if (price) criteria.maxPrice = Number(price[1]) * 1000000;
+
+  return criteria;
 }
 
 export default async function handler(req, res) {
-  // CORS
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-  if (req.method === "OPTIONS") return res.status(200).end();
-
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
-
-  const { message, history } = req.body || {};
+  const { message } = req.body;
 
   if (!message) {
     return res.status(400).json({ error: "Missing message" });
   }
 
-  // Build clean conversation history
-  const messages = [];
-  if (Array.isArray(history)) {
-    for (const msg of history) {
-      if (msg && msg.role && msg.content) {
-        messages.push({
-          role: msg.role,
-          content: msg.content
-        });
-      }
-    }
-  }
-
-  if (messages.length === 0) {
-    messages.push({ role: "user", content: message });
-  }
-
   try {
-    console.log("🚀 DALTON REQUEST START");
-    console.log("Message:", message);
-    console.log("History length:", Array.isArray(history) ? history.length : 0);
-    console.log("Messages sent:", messages.length);
-    console.log("🧠 FINAL MESSAGES:", JSON.stringify(messages, null, 2));
+    // 🔥 STEP 1: EXTRACT DATA FIRST
+    const extracted = extractCriteria(message);
 
+    const hasLocation =
+      extracted.city || extracted.area || extracted.zip;
+
+    const hasSignal =
+      extracted.maxPrice ||
+      extracted.beds ||
+      extracted.baths;
+
+    // 🚀 🔥 STEP 2: TRIGGER SEARCH BEFORE AI
+    if (hasLocation && hasSignal) {
+      const searchUrl = buildSearchUrl(extracted);
+
+      return res.status(200).json({
+        reply: "Got it. Pulling options for you now.",
+        searchUrl
+      });
+    }
+
+    // 🧠 STEP 3: FALLBACK TO AI
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -274,62 +274,27 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        temperature: 0.2,
-        max_tokens: 500,
         messages: [
           {
             role: "system",
             content: DALTON_SYSTEM_PROMPT
           },
-          ...messages
+          {
+            role: "user",
+            content: message
+          }
         ]
       })
     });
 
     const data = await response.json();
-
-    console.log("🔥 OPENAI RESPONSE:", JSON.stringify(data, null, 2));
-
-    if (!response.ok) {
-      return res.status(500).json({
-        reply: "API ERROR",
-        error: data
-      });
-    }
-
     const reply = data.choices?.[0]?.message?.content || "No response";
-
-    // 🔍 OPTIONAL: still support SEARCH_READY if Dalton sends it
-    if (reply.includes("SEARCH_READY:")) {
-      try {
-        const match = reply.match(/SEARCH_READY:(\{.*\})/s);
-
-        if (!match || !match[1]) {
-          return res.status(200).json({ reply });
-        }
-
-        const criteria = JSON.parse(match[1]);
-        const searchUrl = buildSearchUrl(criteria);
-
-        const humanMessage = reply.split("SEARCH_READY:")[0].trim();
-
-        return res.status(200).json({
-          reply: humanMessage || "Got it. Pulling options for you now.",
-          searchUrl
-        });
-      } catch (err) {
-        console.error("❌ SEARCH_READY PARSE ERROR:", err);
-        return res.status(200).json({ reply });
-      }
-    }
 
     return res.status(200).json({ reply });
 
   } catch (error) {
-    console.error("❌ DALTON BACKEND ERROR:", error);
-
     return res.status(500).json({
-      reply: "Something went wrong. Please try again.",
+      reply: "Something went wrong.",
       error: error.message
     });
   }
