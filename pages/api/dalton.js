@@ -288,9 +288,9 @@ export default async function handler(req, res) {
     if (hasLocation && hasSignal) {
       const url = buildSearchUrl(extracted);
 
-     return res.status(200).json({
-  reply: `Got it. Pulling options for you now → ${url}`,
-  searchUrl: url
+      return res.status(200).json({
+        reply: "Got it. Pulling options for you now.",
+        searchUrl: url
       });
     }
 
