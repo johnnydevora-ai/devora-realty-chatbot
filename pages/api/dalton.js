@@ -211,9 +211,11 @@ function buildSearchUrl(criteria) {
   if (criteria.baths) params.set("baths", String(criteria.baths));
   if (criteria.minPrice) params.set("minPrice", String(criteria.minPrice));
   if (criteria.maxPrice) params.set("maxPrice", String(criteria.maxPrice));
+
   if (criteria.type && criteria.type !== "Residential") {
     params.set("type", criteria.type);
   }
+
   if (criteria.features && criteria.features.length > 0) {
     params.set("features", criteria.features.join(","));
   }
@@ -223,6 +225,7 @@ function buildSearchUrl(criteria) {
 }
 
 export default async function handler(req, res) {
+  // CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -239,6 +242,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Missing message" });
   }
 
+  // Build clean conversation history
   const messages = [];
   if (Array.isArray(history)) {
     for (const msg of history) {
@@ -259,8 +263,7 @@ export default async function handler(req, res) {
     console.log("🚀 DALTON REQUEST START");
     console.log("Message:", message);
     console.log("History length:", Array.isArray(history) ? history.length : 0);
-    console.log("Messages sent to API:", messages.length);
-    console.log("API Key exists:", !!process.env.OPEN_API_KEY);
+    console.log("Messages sent:", messages.length);
     console.log("🧠 FINAL MESSAGES:", JSON.stringify(messages, null, 2));
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -296,7 +299,7 @@ export default async function handler(req, res) {
 
     const reply = data.choices?.[0]?.message?.content || "No response";
 
-    // SEARCH_READY detection
+    // 🔍 OPTIONAL: still support SEARCH_READY if Dalton sends it
     if (reply.includes("SEARCH_READY:")) {
       try {
         const match = reply.match(/SEARCH_READY:(\{.*\})/s);
@@ -307,6 +310,7 @@ export default async function handler(req, res) {
 
         const criteria = JSON.parse(match[1]);
         const searchUrl = buildSearchUrl(criteria);
+
         const humanMessage = reply.split("SEARCH_READY:")[0].trim();
 
         return res.status(200).json({
@@ -320,6 +324,7 @@ export default async function handler(req, res) {
     }
 
     return res.status(200).json({ reply });
+
   } catch (error) {
     console.error("❌ DALTON BACKEND ERROR:", error);
 
