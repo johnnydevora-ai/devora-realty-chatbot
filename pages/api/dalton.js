@@ -198,7 +198,7 @@ RULES:
 
   `;
 
-// Helper: build devorarealty.com search URL from parsed criteria
+// Helper: build devorarealty.com search URL
 function buildSearchUrl(criteria) {
   const base = "https://devorarealty.com/properties/";
   const params = new URLSearchParams();
@@ -209,14 +209,9 @@ function buildSearchUrl(criteria) {
   if (criteria.zip) params.set("search", criteria.zip);
   if (criteria.beds) params.set("beds", String(criteria.beds));
   if (criteria.baths) params.set("baths", String(criteria.baths));
-  if (criteria.minPrice) params.set("minPrice", String(criteria.minPrice));
   if (criteria.maxPrice) params.set("maxPrice", String(criteria.maxPrice));
 
-  if (criteria.type && criteria.type !== "Residential") {
-    params.set("type", criteria.type);
-  }
-
-  if (criteria.features && criteria.features.length > 0) {
+  if (criteria.features && criteria.features.length) {
     params.set("features", criteria.features.join(","));
   }
 
@@ -242,15 +237,12 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Missing message" });
   }
 
-  // Build clean conversation history
+  // Build history cleanly
   const messages = [];
   if (Array.isArray(history)) {
     for (const msg of history) {
-      if (msg && msg.role && msg.content) {
-        messages.push({
-          role: msg.role,
-          content: msg.content
-        });
+      if (msg?.role && msg?.content) {
+        messages.push({ role: msg.role, content: msg.content });
       }
     }
   }
@@ -260,11 +252,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    console.log("🚀 DALTON REQUEST START");
-    console.log("Message:", message);
-    console.log("History length:", Array.isArray(history) ? history.length : 0);
-    console.log("Messages sent:", messages.length);
-    console.log("🧠 FINAL MESSAGES:", JSON.stringify(messages, null, 2));
+    console.log("🚀 DALTON REQUEST");
+    console.log("🧠 FINAL MESSAGES:", messages);
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -275,7 +264,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: "gpt-4o-mini",
         temperature: 0.2,
-        max_tokens: 500,
+        max_tokens: 400,
         messages: [
           {
             role: "system",
@@ -288,9 +277,8 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
-    console.log("🔥 OPENAI RESPONSE:", JSON.stringify(data, null, 2));
-
     if (!response.ok) {
+      console.error("❌ OPENAI ERROR:", data);
       return res.status(500).json({
         reply: "API ERROR",
         error: data
@@ -299,34 +287,30 @@ export default async function handler(req, res) {
 
     const reply = data.choices?.[0]?.message?.content || "No response";
 
-    // 🔍 OPTIONAL: still support SEARCH_READY if Dalton sends it
+    // OPTIONAL: support SEARCH_READY if Dalton outputs it
     if (reply.includes("SEARCH_READY:")) {
       try {
         const match = reply.match(/SEARCH_READY:(\{.*\})/s);
+        const criteria = match ? JSON.parse(match[1]) : null;
 
-        if (!match || !match[1]) {
-          return res.status(200).json({ reply });
+        if (criteria) {
+          const url = buildSearchUrl(criteria);
+          const human = reply.split("SEARCH_READY:")[0].trim();
+
+          return res.status(200).json({
+            reply: human || "Got it. Pulling options for you now.",
+            searchUrl: url
+          });
         }
-
-        const criteria = JSON.parse(match[1]);
-        const searchUrl = buildSearchUrl(criteria);
-
-        const humanMessage = reply.split("SEARCH_READY:")[0].trim();
-
-        return res.status(200).json({
-          reply: humanMessage || "Got it. Pulling options for you now.",
-          searchUrl
-        });
       } catch (err) {
-        console.error("❌ SEARCH_READY PARSE ERROR:", err);
-        return res.status(200).json({ reply });
+        console.error("❌ PARSE ERROR:", err);
       }
     }
 
     return res.status(200).json({ reply });
 
   } catch (error) {
-    console.error("❌ DALTON BACKEND ERROR:", error);
+    console.error("❌ BACKEND ERROR:", error);
 
     return res.status(500).json({
       reply: "Something went wrong. Please try again.",
