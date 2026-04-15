@@ -212,40 +212,69 @@ function buildSearchUrl(criteria) {
   return `${base}?${params.toString()}`;
 }
 
-// 🔥 SIMPLE CRITERIA PARSER (server-side)
+// 🔥 SAFE parser (does NOT break flow)
 function extractCriteria(text) {
-  const criteria = {};
+  const c = {};
+  const t = text.toLowerCase();
 
-  const lower = text.toLowerCase();
+  if (t.includes("austin")) c.city = "Austin";
+  if (t.includes("east austin")) c.area = "East Austin";
 
-  if (lower.includes("austin")) criteria.city = "Austin";
-  if (lower.includes("east austin")) criteria.area = "East Austin";
-
-  const zipMatch = text.match(/787\d{2}/);
-  if (zipMatch) criteria.zip = zipMatch[0];
+  const zip = text.match(/787\d{2}/);
+  if (zip) c.zip = zip[0];
 
   const beds = text.match(/(\d+)\s*bed/);
-  if (beds) criteria.beds = Number(beds[1]);
+  if (beds) c.beds = Number(beds[1]);
 
   const baths = text.match(/(\d+)\s*bath/);
-  if (baths) criteria.baths = Number(baths[1]);
+  if (baths) c.baths = Number(baths[1]);
 
   const price = text.match(/(\d+(\.\d+)?)\s?m/i);
-  if (price) criteria.maxPrice = Number(price[1]) * 1000000;
+  if (price) c.maxPrice = Number(price[1]) * 1000000;
 
-  return criteria;
+  return c;
 }
 
 export default async function handler(req, res) {
-  const { message } = req.body;
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const { message, history } = req.body || {};
   if (!message) {
     return res.status(400).json({ error: "Missing message" });
   }
 
+  // 🔥 BUILD FULL HISTORY (keep this!)
+  const messages = [];
+  if (Array.isArray(history)) {
+    for (const msg of history) {
+      if (msg?.role && msg?.content) {
+        messages.push({ role: msg.role, content: msg.content });
+      }
+    }
+  }
+
+  if (messages.length === 0) {
+    messages.push({ role: "user", content: message });
+  }
+
   try {
-    // 🔥 STEP 1: EXTRACT DATA FIRST
-    const extracted = extractCriteria(message);
+    console.log("🚀 DALTON REQUEST");
+    console.log("🧠 FINAL MESSAGES:", messages);
+
+    // 🔥 STEP 1: check ALL user input for criteria
+    const combinedText = messages
+      .filter(m => m.role === "user")
+      .map(m => m.content)
+      .join(" ");
+
+    const extracted = extractCriteria(combinedText);
 
     const hasLocation =
       extracted.city || extracted.area || extracted.zip;
@@ -255,17 +284,17 @@ export default async function handler(req, res) {
       extracted.beds ||
       extracted.baths;
 
-    // 🚀 🔥 STEP 2: TRIGGER SEARCH BEFORE AI
+    // 🚀 🔥 STEP 2: TRIGGER SEARCH EARLY
     if (hasLocation && hasSignal) {
-      const searchUrl = buildSearchUrl(extracted);
+      const url = buildSearchUrl(extracted);
 
       return res.status(200).json({
         reply: "Got it. Pulling options for you now.",
-        searchUrl
+        searchUrl: url
       });
     }
 
-    // 🧠 STEP 3: FALLBACK TO AI
+    // 🧠 STEP 3: NORMAL DALTON FLOW
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -274,27 +303,37 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
+        temperature: 0.2,
+        max_tokens: 400,
         messages: [
           {
             role: "system",
             content: DALTON_SYSTEM_PROMPT
           },
-          {
-            role: "user",
-            content: message
-          }
+          ...messages
         ]
       })
     });
 
     const data = await response.json();
+
+    if (!response.ok) {
+      console.error("❌ OPENAI ERROR:", data);
+      return res.status(500).json({
+        reply: "API ERROR",
+        error: data
+      });
+    }
+
     const reply = data.choices?.[0]?.message?.content || "No response";
 
     return res.status(200).json({ reply });
 
   } catch (error) {
+    console.error("❌ BACKEND ERROR:", error);
+
     return res.status(500).json({
-      reply: "Something went wrong.",
+      reply: "Something went wrong. Please try again.",
       error: error.message
     });
   }
