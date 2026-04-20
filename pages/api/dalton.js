@@ -17,416 +17,501 @@ AFTER RESULTS: follow up with "Want me to save this search and alert you when so
 FINAL RULE: if about to ask a 3rd question, don't. Run the search.
 `;
 
-const DEVORA_BASE = "https://devorarealty.com";
+// api/dalton.js
+// Devora Realty — Dalton chatbot backend (Vercel serverless route)
+// Single-file build. Replaces the previous /api/dalton handler.
+//
+// Scope:
+//   - Austin + San Antonio neighborhoods (ZIP-based)
+//   - Austin-metro + San Antonio-metro suburbs (each routes to its own city segment)
+//   - AgentFire-compatible URL builder (path segments for geography, query string for filters)
+//   - Alias normalization
+//   - No luxury/price heuristics
+//   - keyword= reserved for non-geographic features only
+//   - Clarifying-question fallback for ambiguous / unknown locations
 
-const DALTON_CITY_LOGIC = {
-  "austin": { type: "direct", slug: "Austin,%20TX" },
-  "cedar park": { type: "direct", slug: "Cedar%20Park,%20TX" },
-  "round rock": { type: "direct", slug: "Round%20Rock,%20TX" },
-  "georgetown": { type: "direct", slug: "Georgetown,%20TX" },
-  "leander": { type: "direct", slug: "Leander,%20TX" },
-  "pflugerville": { type: "direct", slug: "Pflugerville,%20TX" },
-  "dripping springs": { type: "direct", slug: "Dripping%20Springs,%20TX" },
-  "buda": { type: "direct", slug: "Buda,%20TX" },
-  "kyle": { type: "direct", slug: "Kyle,%20TX" },
-  "manor": { type: "direct", slug: "Manor,%20TX" },
-  "elgin": { type: "direct", slug: "Elgin,%20TX" },
-  "liberty hill": { type: "direct", slug: "Liberty%20Hill,%20TX" },
-  "hutto": { type: "direct", slug: "Hutto,%20TX" },
-  "bastrop": { type: "direct", slug: "Bastrop,%20TX" },
-  "lockhart": { type: "direct", slug: "Lockhart,%20TX" },
-  "wimberley": { type: "direct", slug: "Wimberley,%20TX" },
-  "johnson city": { type: "direct", slug: "Johnson%20City,%20TX" },
-  "west lake hills": { type: "proxy", route: "austin_luxury_west", message: "Running Austin westside luxury inventory now." },
-  "west lake": { type: "proxy", route: "austin_luxury_west", message: "Running Austin westside luxury inventory now." },
-  "westlake": { type: "proxy", route: "austin_luxury_west", message: "Running Austin westside luxury inventory now." },
-  "rollingwood": { type: "proxy", route: "austin_luxury_west", message: "Running Austin close-in luxury inventory now." },
-  "bee cave": { type: "proxy", route: "austin_luxury_west", message: "Running west Austin / Bee Cave luxury inventory now." },
-  "lakeway": { type: "proxy", route: "austin_lake_luxury", message: "Running Lake Travis area luxury inventory now." },
-  "east austin": { type: "keyword", parent: "Austin,%20TX", keyword: "East Austin" },
-  "mueller": { type: "keyword", parent: "Austin,%20TX", keyword: "Mueller" },
-  "tarrytown": { type: "keyword", parent: "Austin,%20TX", keyword: "Tarrytown" },
-  "clarksville": { type: "keyword", parent: "Austin,%20TX", keyword: "Clarksville" },
-  "south congress": { type: "keyword", parent: "Austin,%20TX", keyword: "South Congress" },
-  "zilker": { type: "keyword", parent: "Austin,%20TX", keyword: "Zilker" },
-  "rainey": { type: "keyword", parent: "Austin,%20TX", keyword: "Rainey" },
-  "san antonio": { type: "direct", slug: "San%20Antonio,%20TX" },
-  "boerne": { type: "direct", slug: "Boerne,%20TX" },
-  "helotes": { type: "direct", slug: "Helotes,%20TX" },
-  "bulverde": { type: "direct", slug: "Bulverde,%20TX" },
-  "spring branch": { type: "direct", slug: "Spring%20Branch,%20TX" },
-  "schertz": { type: "direct", slug: "Schertz,%20TX" },
-  "cibolo": { type: "direct", slug: "Cibolo,%20TX" },
-  "new braunfels": { type: "direct", slug: "New%20Braunfels,%20TX" },
-  "seguin": { type: "direct", slug: "Seguin,%20TX" },
-  "floresville": { type: "direct", slug: "Floresville,%20TX" },
-  "castroville": { type: "direct", slug: "Castroville,%20TX" },
-  "la vernia": { type: "direct", slug: "La%20Vernia,%20TX" },
-  "converse": { type: "direct", slug: "Converse,%20TX" },
-  "alamo heights": { type: "proxy", route: "sanantonio_luxury_core", message: "Running San Antonio close-in luxury inventory now." },
-  "terrell hills": { type: "proxy", route: "sanantonio_luxury_core", message: "Running San Antonio close-in luxury inventory now." },
-  "olmos park": { type: "proxy", route: "sanantonio_luxury_core", message: "Running San Antonio close-in luxury inventory now." },
-  "shavano park": { type: "proxy", route: "sanantonio_north_luxury", message: "Running north San Antonio luxury inventory now." },
-  "fair oaks ranch": { type: "proxy", route: "boerne_luxury", message: "Running Boerne / Fair Oaks Ranch inventory now." },
-  "spicewood": { type: "direct", slug: "Spicewood,%20TX" },
-  "marble falls": { type: "direct", slug: "Marble%20Falls,%20TX" },
-  "horseshoe bay": { type: "direct", slug: "Horseshoe%20Bay,%20TX" },
-  "kingsland": { type: "direct", slug: "Kingsland,%20TX" },
-  "burnet": { type: "direct", slug: "Burnet,%20TX" },
-  "llano": { type: "direct", slug: "Llano,%20TX" },
-  "lago vista": { type: "proxy", route: "lake_inventory", message: "Running nearby lake inventory now." },
-  "jonestown": { type: "proxy", route: "lake_inventory", message: "Running nearby lake inventory now." },
-  "rockport": { type: "direct", slug: "Rockport,%20TX" },
-  "port aransas": { type: "direct", slug: "Port%20Aransas,%20TX" },
-  "corpus christi": { type: "direct", slug: "Corpus%20Christi,%20TX" },
-  "falls city": { type: "direct", slug: "Falls%20City,%20TX" },
-  "poth": { type: "direct", slug: "Poth,%20TX" }
+'use strict';
+
+// ============================================================================
+// 1. NEIGHBORHOOD / SUBURB DICTIONARIES
+// Each top-level entry belongs to exactly one "city segment" that AgentFire
+// understands (city-<Name>, TX). Suburbs are their OWN city segment, not Austin.
+// ============================================================================
+
+// --- Austin proper ---
+const AUSTIN = {
+  east_austin:     ['78702', '78721', '78722', '78723', '78741'],
+  downtown:        ['78701', '78703'],
+  south_congress:  ['78704'],
+  south_lamar:     ['78704', '78745'],
+  east_riverside:  ['78741', '78744'],
+  far_south:       ['78744', '78745', '78748'],
+  southwest:       ['78735', '78749'],
+  westlake:        ['78746'],
+  tarrytown:       ['78703'],
+  hyde_park:       ['78751', '78756'],
+  mueller:         ['78723'],
+  allandale:       ['78756', '78757'],
+  northwest_hills: ['78731', '78759'],
+  north_austin:    ['78727', '78729', '78758', '78759'],
+  northeast:       ['78752', '78753', '78754'],
+  southeast:       ['78744', '78747'],
+  lake_travis:     ['78732', '78733', '78734', '78738'],
 };
 
-const PROXY_PRESETS = {
-  austin_luxury_west: { slug: "Austin,%20TX", params: { priceMin: 1500000 } },
-  austin_lake_luxury: { slug: "Austin,%20TX", params: { priceMin: 1200000, keyword: "Lake Travis" } },
-  sanantonio_luxury_core: { slug: "San%20Antonio,%20TX", params: { priceMin: 900000 } },
-  sanantonio_north_luxury: { slug: "San%20Antonio,%20TX", params: { priceMin: 750000 } },
-  boerne_luxury: { slug: "Boerne,%20TX", params: { priceMin: 800000 } },
-  lake_inventory: { slug: "Spicewood,%20TX", params: { priceMin: 700000 } }
+// --- San Antonio proper ---
+const SAN_ANTONIO = {
+  alamo_heights: ['78209'],
+  terrell_hills: ['78209'],
+  olmos_park:    ['78212'],
+  monte_vista:   ['78212'],
+  king_william:  ['78204'],
+  pearl:         ['78215'],
+  downtown_sa:   ['78205', '78215'],
+  stone_oak:     ['78258', '78259'],
+  the_dominion:  ['78257'],
+  shavano_park:  ['78231', '78249'],
+  alamo_ranch:   ['78253'],
+  northwest_sa:  ['78227', '78238', '78240', '78250'],
+  northeast_sa:  ['78217', '78218', '78233', '78247'],
+  west_sa:       ['78207', '78227', '78228'],
+  south_sa:      ['78211', '78214', '78221', '78223', '78224'],
 };
 
-const CITY_ALIASES = {
-  "atx": "austin",
-  "austin tx": "austin",
-  "satx": "san antonio",
-  "sa": "san antonio",
-  "san antonio tx": "san antonio",
-  "westlake": "west lake",
-  "nb": "new braunfels",
-  "cc": "corpus christi",
-  "rr": "round rock"
+// --- Austin-metro suburbs (each is its own AgentFire city segment) ---
+// Format: key -> { city: <AgentFire city name>, zips: [...] }
+const AUSTIN_SUBURBS = {
+  round_rock:       { city: 'Round Rock',       zips: ['78664', '78665', '78681'] },
+  pflugerville:     { city: 'Pflugerville',     zips: ['78660', '78691'] },
+  cedar_park:       { city: 'Cedar Park',       zips: ['78613'] },
+  leander:          { city: 'Leander',          zips: ['78641', '78645'] },
+  georgetown:       { city: 'Georgetown',       zips: ['78626', '78628', '78633'] },
+  hutto:            { city: 'Hutto',            zips: ['78634'] },
+  kyle:             { city: 'Kyle',             zips: ['78640'] },
+  buda:             { city: 'Buda',             zips: ['78610'] },
+  manor:            { city: 'Manor',            zips: ['78653'] },
+  bee_cave:         { city: 'Bee Cave',         zips: ['78738'] },
+  lakeway:          { city: 'Lakeway',          zips: ['78734', '78738'] },
+  dripping_springs: { city: 'Dripping Springs', zips: ['78620'] },
 };
 
-const RESET_TRIGGERS = ["reset", "start over", "new search", "clear filters", "clear search", "restart"];
+// --- San Antonio-metro suburbs ---
+const SA_SUBURBS = {
+  boerne:         { city: 'Boerne',         zips: ['78006', '78015'] },
+  new_braunfels:  { city: 'New Braunfels',  zips: ['78130', '78132'] },
+  schertz:        { city: 'Schertz',        zips: ['78154'] },
+  cibolo:         { city: 'Cibolo',         zips: ['78108'] },
+  converse:       { city: 'Converse',       zips: ['78109'] },
+  universal_city: { city: 'Universal City', zips: ['78148'] },
+  helotes:        { city: 'Helotes',        zips: ['78023'] },
+  live_oak:       { city: 'Live Oak',       zips: ['78233'] },
+  selma:          { city: 'Selma',          zips: ['78154'] },
+  bulverde:       { city: 'Bulverde',       zips: ['78163'] },
+};
 
-function normalizeText(v) {
-  return String(v || "").replace(/\s+/g, " ").trim();
-}
+const CITY_DICTS = { 'Austin': AUSTIN, 'San Antonio': SAN_ANTONIO };
+const SUBURB_DICTS = { ...AUSTIN_SUBURBS, ...SA_SUBURBS };
 
-function applyAliasTokens(text) {
-  let out = " " + text + " ";
-  for (const [alias, full] of Object.entries(CITY_ALIASES)) {
-    out = out.replace(new RegExp(`\\s${alias}\\s`, "g"), ` ${full} `);
+// Reverse lookup: canonical key -> AgentFire city name
+const CITY_BY_KEY = (() => {
+  const out = {};
+  for (const [city, dict] of Object.entries(CITY_DICTS)) {
+    for (const key of Object.keys(dict)) out[key] = city;
   }
-  return out.replace(/\s+/g, " ").trim();
-}
-
-function extractCityFromText(raw) {
-  if (!raw) return null;
-  let t = String(raw).toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
-  t = applyAliasTokens(t);
-  const keys = Object.keys(DALTON_CITY_LOGIC).sort((a, b) => b.length - a.length);
-  for (const k of keys) {
-    if (new RegExp(`(^|\\s)${k}(\\s|$)`, "i").test(t)) return k;
+  for (const [key, entry] of Object.entries(SUBURB_DICTS)) {
+    out[key] = entry.city;
   }
-  return null;
+  return out;
+})();
+
+// ZIPs for any key (neighborhood or suburb)
+function zipsFor(key) {
+  if (AUSTIN[key])       return AUSTIN[key];
+  if (SAN_ANTONIO[key])  return SAN_ANTONIO[key];
+  if (SUBURB_DICTS[key]) return SUBURB_DICTS[key].zips;
+  return [];
 }
 
-function toNumber(numStr, suffix) {
-  const n = parseFloat(String(numStr).replace(/,/g, ""));
-  if (isNaN(n)) return null;
-  const s = (suffix || "").toLowerCase();
-  if (s === "m" || s === "million") return Math.round(n * 1000000);
-  if (s === "k" || s === "thousand") return Math.round(n * 1000);
+// ============================================================================
+// 2. ALIAS TABLE
+// ============================================================================
+
+const ALIASES = {
+  // --- Austin neighborhoods ---
+  'east austin': 'east_austin',
+  'east side': 'east_austin',
+  'eastside': 'east_austin',
+  'east atx': 'east_austin',
+  'downtown': 'downtown',
+  'downtown austin': 'downtown',
+  'dt austin': 'downtown',
+  'south congress': 'south_congress',
+  'soco': 'south_congress',
+  'south lamar': 'south_lamar',
+  'sola': 'south_lamar',
+  'east riverside': 'east_riverside',
+  'riverside': 'east_riverside',
+  'far south': 'far_south',
+  'far south austin': 'far_south',
+  'southwest austin': 'southwest',
+  'sw austin': 'southwest',
+  'westlake': 'westlake',
+  'west lake hills': 'westlake',
+  'rollingwood': 'westlake',
+  'tarrytown': 'tarrytown',
+  'hyde park': 'hyde_park',
+  'mueller': 'mueller',
+  'allandale': 'allandale',
+  'northwest hills': 'northwest_hills',
+  'nw hills': 'northwest_hills',
+  'north austin': 'north_austin',
+  'north atx': 'north_austin',
+  'northeast austin': 'northeast',
+  'ne austin': 'northeast',
+  'southeast austin': 'southeast',
+  'se austin': 'southeast',
+  'lake travis': 'lake_travis',
+
+  // --- San Antonio neighborhoods ---
+  'alamo heights': 'alamo_heights',
+  '09er': 'alamo_heights',
+  'terrell hills': 'terrell_hills',
+  'olmos park': 'olmos_park',
+  'monte vista': 'monte_vista',
+  'king william': 'king_william',
+  'pearl': 'pearl',
+  'the pearl': 'pearl',
+  'downtown san antonio': 'downtown_sa',
+  'dt sa': 'downtown_sa',
+  'stone oak': 'stone_oak',
+  'the dominion': 'the_dominion',
+  'dominion': 'the_dominion',
+  'shavano park': 'shavano_park',
+  'shavano': 'shavano_park',
+  'alamo ranch': 'alamo_ranch',
+  'northwest san antonio': 'northwest_sa',
+  'nw san antonio': 'northwest_sa',
+  'northeast san antonio': 'northeast_sa',
+  'ne san antonio': 'northeast_sa',
+  'west san antonio': 'west_sa',
+  'south san antonio': 'south_sa',
+
+  // --- Austin-metro suburbs ---
+  'round rock': 'round_rock',
+  'pflugerville': 'pflugerville',
+  'cedar park': 'cedar_park',
+  'leander': 'leander',
+  'georgetown': 'georgetown',
+  'hutto': 'hutto',
+  'kyle': 'kyle',
+  'buda': 'buda',
+  'manor': 'manor',
+  'bee cave': 'bee_cave',
+  'lakeway': 'lakeway',
+  'dripping springs': 'dripping_springs',
+
+  // --- San Antonio-metro suburbs ---
+  'boerne': 'boerne',
+  'new braunfels': 'new_braunfels',
+  'nb': 'new_braunfels',
+  'schertz': 'schertz',
+  'cibolo': 'cibolo',
+  'converse': 'converse',
+  'universal city': 'universal_city',
+  'helotes': 'helotes',
+  'live oak': 'live_oak',
+  'selma': 'selma',
+  'bulverde': 'bulverde',
+};
+
+// ============================================================================
+// 3. LOCATION RESOLVER
+// ============================================================================
+
+function normalize(raw) {
+  return String(raw || '')
+    .toLowerCase()
+    .replace(/[.,!?]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+function matchAliases(t) {
+  const sorted = Object.keys(ALIASES).sort((a, b) => b.length - a.length);
+  const hits = [];
+  const used = [];
+  for (const alias of sorted) {
+    const re = new RegExp(`(?:^|\\s)${escapeRe(alias)}(?:\\s|$)`);
+    if (re.test(t) && !used.some(u => u.includes(alias) || alias.includes(u))) {
+      hits.push(ALIASES[alias]);
+      used.push(alias);
+    }
+  }
+  return Array.from(new Set(hits));
+}
+
+function hasNeighborhood(t) { return matchAliases(t).length > 0; }
+
+/**
+ * Resolve a free-text location phrase.
+ * Returns one of:
+ *   { type: 'zip',       city, key, zips }
+ *   { type: 'city',      city }
+ *   { type: 'zipOnly',   zips }
+ *   { type: 'ambiguous', candidates: [{city, key}] }
+ *   { type: 'unknown'    }
+ *
+ * Note: for suburbs, `city` is the SUBURB'S name (e.g. 'Round Rock'), not 'Austin'.
+ * The URL builder will emit `city-Round Rock, TX|zip-78664|...` accordingly.
+ */
+function resolveLocation(text) {
+  const t = normalize(text);
+  if (!t) return { type: 'unknown' };
+
+  // Direct ZIP(s)
+  const zipMatches = t.match(/\b7[0-9]{4}\b/g);
+  if (zipMatches && zipMatches.length) {
+    return { type: 'zipOnly', zips: Array.from(new Set(zipMatches)) };
+  }
+
+  // Bare primary city (no neighborhood/suburb alias present)
+  if (/\b(austin|atx)\b/.test(t) && !hasNeighborhood(t)) {
+    return { type: 'city', city: 'Austin' };
+  }
+  if (/\b(san antonio|sa)\b/.test(t) && !hasNeighborhood(t)) {
+    return { type: 'city', city: 'San Antonio' };
+  }
+
+  const keys = matchAliases(t);
+  if (keys.length === 0) return { type: 'unknown' };
+
+  if (keys.length === 1) {
+    const key = keys[0];
+    const city = CITY_BY_KEY[key];
+    return { type: 'zip', city, key, zips: zipsFor(key) };
+  }
+
+  // Multiple matches — union only if all share one city segment
+  const cities = new Set(keys.map(k => CITY_BY_KEY[k]));
+  if (cities.size === 1) {
+    const city = [...cities][0];
+    const zips = Array.from(new Set(keys.flatMap(k => zipsFor(k))));
+    return { type: 'zip', city, key: keys.join('+'), zips };
+  }
+  return {
+    type: 'ambiguous',
+    candidates: keys.map(k => ({ city: CITY_BY_KEY[k], key: k })),
+  };
+}
+
+// ============================================================================
+// 4. FILTER PARSER
+// ============================================================================
+
+const KEYWORD_FEATURES = new Set([
+  'pool', 'pools',
+  'view', 'views', 'hill country views',
+  'wine cellar', 'wine room',
+  'guest house', 'casita',
+  'acreage', 'acre', 'acres',
+  'waterfront', 'lakefront',
+  'new construction',
+  'workshop', 'shop',
+  'adu',
+]);
+
+function toDollars(num, unit) {
+  const n = parseFloat(num);
+  if (!unit) return n >= 1000 ? Math.round(n) : Math.round(n * 1000); // bare "750" => 750k
+  const u = unit.toLowerCase();
+  if (u === 'k' || u === 'thousand') return Math.round(n * 1_000);
+  if (u === 'm' || u === 'million')  return Math.round(n * 1_000_000);
   return Math.round(n);
 }
 
-function parsePriceTokens(text) {
-  const t = text.toLowerCase();
-  const state = {};
-  const under = t.match(/(?:under|below|less than|max(?:imum)?|up to)\s*\$?\s*([\d.,]+)\s*(k|m|million|thousand)?/);
-  if (under) state.priceMax = toNumber(under[1], under[2]);
-  const over = t.match(/(?:over|above|more than|min(?:imum)?|at least|starting at)\s*\$?\s*([\d.,]+)\s*(k|m|million|thousand)?/);
-  if (over) state.priceMin = toNumber(over[1], over[2]);
-  if (state.priceMax == null && state.priceMin == null) {
-    const bare = t.match(/\$?\s*([\d.,]+)\s*(k|m|million|thousand)\b/);
-    if (bare) state.priceMax = toNumber(bare[1], bare[2]);
-    else {
-      const dollar = t.match(/\$\s*([\d.,]+)/);
-      if (dollar) state.priceMax = toNumber(dollar[1], null);
-    }
+function parseFilters(userMessage) {
+  const t = String(userMessage || '').toLowerCase();
+  const f = { features: [] };
+
+  const beds = t.match(/(\d)\s*(?:bed|br|bedroom)/);
+  if (beds) f.bedsMin = parseInt(beds[1], 10);
+
+  const baths = t.match(/(\d(?:\.5)?)\s*(?:bath|ba)/);
+  if (baths) f.bathsMin = parseFloat(baths[1]);
+
+  const maxK = t.match(/(?:under|below|less than|max|up to)\s*\$?(\d+(?:\.\d+)?)\s*(k|m|million|thousand)?/);
+  if (maxK) f.priceMax = toDollars(maxK[1], maxK[2]);
+
+  const minK = t.match(/(?:over|above|at least|min(?:imum)?)\s*\$?(\d+(?:\.\d+)?)\s*(k|m|million|thousand)?/);
+  if (minK) f.priceMin = toDollars(minK[1], minK[2]);
+
+  const sqft = t.match(/(\d{3,5})\s*(?:sq\s*ft|sqft|square feet)/);
+  if (sqft) f.sqftMin = parseInt(sqft[1], 10);
+
+  for (const kw of KEYWORD_FEATURES) {
+    if (t.includes(kw)) f.features.push(kw);
   }
-  return state;
+  f.features = Array.from(new Set(f.features));
+
+  return f;
 }
 
-function parseBedsBaths(text) {
-  const t = text.toLowerCase();
-  const out = {};
-  const beds = t.match(/(\d+)\s*(?:\+)?\s*(?:bed|beds|bedroom|br)\b/);
-  if (beds) out.bedsMin = parseInt(beds[1], 10);
-  const baths = t.match(/(\d+(?:\.\d)?)\s*(?:\+)?\s*(?:bath|baths|bathroom|ba)\b/);
-  if (baths) out.bathsMin = parseFloat(baths[1]);
-  return out;
+// ============================================================================
+// 5. URL BUILDER
+// ============================================================================
+
+const SITE = 'https://devorarealty.com';
+
+function buildPropertiesUrl(loc, filters) {
+  const segments = [];
+
+  if (loc.type === 'zip' || loc.type === 'city') {
+    segments.push(`city-${loc.city}, TX`);
+  }
+  if (loc.type === 'zip' || loc.type === 'zipOnly') {
+    for (const z of loc.zips) segments.push(`zip-${z}`);
+  }
+  if (segments.length === 0) segments.push('state-TX');
+
+  const path = `/properties/${segments.join('|')}/`;
+
+  const qs = new URLSearchParams();
+  if (filters.bedsMin)      qs.set('bedsMin',      String(filters.bedsMin));
+  if (filters.bathsMin)     qs.set('bathsMin',     String(filters.bathsMin));
+  if (filters.priceMin)     qs.set('priceMin',     String(filters.priceMin));
+  if (filters.priceMax)     qs.set('priceMax',     String(filters.priceMax));
+  if (filters.sqftMin)      qs.set('sqftMin',      String(filters.sqftMin));
+  if (filters.propertyType) qs.set('propertyType', filters.propertyType);
+
+  const kw = (filters.features || [])
+    .map(f => String(f).toLowerCase().trim())
+    .filter(f => KEYWORD_FEATURES.has(f));
+  if (kw.length) qs.set('keyword', kw.join(' '));
+
+  const q = qs.toString();
+  return `${SITE}${path}${q ? '?' + q : ''}`;
 }
 
-function parseFeatures(text) {
-  const t = text.toLowerCase();
-  const feats = [];
-  const catalog = ["pool", "acreage", "ranch", "view", "waterfront", "lake", "new build", "new construction", "guest house", "casita", "garage"];
-  for (const f of catalog) if (t.includes(f)) feats.push(f);
-  return feats;
+// ============================================================================
+// 6. RESPONSE FORMATTER
+// ============================================================================
+
+function pretty(key) {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
-function parseType(text) {
-  const t = text.toLowerCase();
-  if (/\bcondo\b/.test(t)) return "Condo";
-  if (/\btownhome|townhouse\b/.test(t)) return "Townhome";
-  if (/\bland|lot|acreage\b/.test(t)) return "Land";
-  if (/\bmulti[-\s]?family|duplex|fourplex\b/.test(t)) return "MultiFamily";
-  if (/\bhome|house|single family|residential\b/.test(t)) return "Residential";
-  return null;
+function summarize(loc, f) {
+  const parts = [];
+  if (f.bedsMin)  parts.push(`${f.bedsMin}+ bed`);
+  if (f.bathsMin) parts.push(`${f.bathsMin}+ bath`);
+  if (f.priceMax) parts.push(`under $${(f.priceMax / 1000).toFixed(0)}k`);
+  if (f.priceMin) parts.push(`over $${(f.priceMin / 1000).toFixed(0)}k`);
+  if (f.features && f.features.length) parts.push(`with ${f.features.join(', ')}`);
+
+  const where =
+    loc.type === 'zip'     ? `${pretty(loc.key)} (${loc.city})` :
+    loc.type === 'city'    ? loc.city :
+    loc.type === 'zipOnly' ? `ZIP ${loc.zips.join(', ')}` :
+                             'Texas';
+  return `Pulling ${parts.join(', ') || 'matching homes'} in ${where}.`;
 }
 
-function buildSearchState(messages) {
-  const state = {
-    city: null, bedsMin: null, bathsMin: null, priceMin: null, priceMax: null,
-    type: null, features: [], keyword: null, resetRequested: false
+// ============================================================================
+// 7. TURN HANDLER
+// ============================================================================
+
+function handleSearchTurn(userMessage) {
+  const loc = resolveLocation(userMessage);
+  const filters = parseFilters(userMessage);
+
+  if (!filters.priceMax && !filters.priceMin && !filters.bedsMin) {
+    return {
+      kind: 'askFilter',
+      text: "Got it — what's your target budget or minimum bedroom count? That helps me trim to homes that actually fit.",
+    };
+  }
+
+  if (loc.type === 'ambiguous') {
+    const names = loc.candidates.map(c => `${pretty(c.key)} (${c.city})`).join(' or ');
+    return { kind: 'askLocation', text: `Quick check — did you mean ${names}?` };
+  }
+
+  if (loc.type === 'unknown') {
+    return {
+      kind: 'askLocation',
+      text: "Which area are you focused on? I cover Austin and San Antonio plus surrounding metros — e.g. East Austin, Mueller, Round Rock, Cedar Park, Alamo Heights, Stone Oak, Boerne, New Braunfels.",
+    };
+  }
+
+  return {
+    kind: 'results',
+    url: buildPropertiesUrl(loc, filters),
+    text: summarize(loc, filters),
   };
-  for (const m of messages) {
-    if (m.role !== "user") continue;
-    const text = normalizeText(m.content);
-    const low = text.toLowerCase();
-    if (RESET_TRIGGERS.some(rt => low.includes(rt))) {
-      state.city = null; state.bedsMin = null; state.bathsMin = null;
-      state.priceMin = null; state.priceMax = null; state.type = null;
-      state.features = []; state.keyword = null; state.resetRequested = true;
-      continue;
-    }
-    const city = extractCityFromText(text);
-    if (city) state.city = city;
-    const bb = parseBedsBaths(text);
-    if (bb.bedsMin != null) state.bedsMin = bb.bedsMin;
-    if (bb.bathsMin != null) state.bathsMin = bb.bathsMin;
-    const p = parsePriceTokens(text);
-    if (p.priceMin != null) state.priceMin = p.priceMin;
-    if (p.priceMax != null) state.priceMax = p.priceMax;
-    const tp = parseType(text);
-    if (tp) state.type = tp;
-    const fs = parseFeatures(text);
-    for (const f of fs) if (!state.features.includes(f)) state.features.push(f);
-  }
-  return state;
 }
 
-function buildLayeredUrl(state) {
-  if (!state.city) return null;
-  const entry = DALTON_CITY_LOGIC[state.city];
-  if (!entry) return null;
-  let slug, params = {}, proxyMessage = null;
-  let routeType = entry.type;
-  if (entry.type === "direct") {
-    slug = entry.slug;
-  } else if (entry.type === "proxy") {
-    const preset = PROXY_PRESETS[entry.route];
-    if (!preset) return null;
-    slug = preset.slug;
-    params = { ...preset.params };
-    proxyMessage = entry.message;
-  } else if (entry.type === "keyword") {
-    slug = entry.parent;
-    params.keyword = entry.keyword;
+// ============================================================================
+// 8. INTENT ROUTER
+// ============================================================================
+
+function classifyIntent(userMessage) {
+  const t = String(userMessage || '').toLowerCase();
+  if (/\b(home|house|property|listing|condo|townhome|bed|bath|zip|neighborhood|area)\b/.test(t)) {
+    return 'search';
   }
-  if (state.bedsMin != null) params.bedsMin = state.bedsMin;
-  if (state.bathsMin != null) params.bathsMin = state.bathsMin;
-  if (state.priceMin != null) params.priceMin = state.priceMin;
-  if (state.priceMax != null) params.priceMax = state.priceMax;
-  if (state.keyword) params.keyword = state.keyword;
-  const query = Object.entries(params)
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-    .join("&");
-  const url = `${DEVORA_BASE}/properties/city-${slug}/${query ? "?" + query : ""}`;
-  return { url, routeType, proxyMessage };
+  if (/\b(agent|broker|contact|email|call|schedule|tour|showing)\b/.test(t)) {
+    return 'lead';
+  }
+  return 'smalltalk';
 }
 
-function shouldTriggerSearch(state, combinedText) {
-  if (!state.city) return false;
-  const hasSignal = state.bedsMin != null || state.bathsMin != null ||
-    state.priceMin != null || state.priceMax != null ||
-    state.features.length > 0 || state.type != null;
-  if (hasSignal) return true;
-  const t = combinedText.toLowerCase();
-  if (/\b(show me|what do you have|just send|send listings|options)\b/.test(t)) return true;
-  return false;
+function handleLeadTurn() {
+  return {
+    kind: 'leadForm',
+    text: "Happy to connect you with an agent — what's the best email or phone for the intro?",
+  };
 }
 
-// ---------- Smart Reply Generator ----------
-function titleCase(s) {
-  return String(s).replace(/\b\w/g, c => c.toUpperCase());
+function handleSmalltalkTurn() {
+  return {
+    kind: 'message',
+    text: "I'm Dalton — Devora Realty's search assistant. Tell me an area and a budget and I'll pull live listings.",
+  };
 }
 
-function formatPrice(n) {
-  if (n == null) return "";
-  if (n >= 1000000) {
-    const v = n / 1000000;
-    return `$${v % 1 === 0 ? v.toFixed(0) : v.toFixed(1)}M`;
+// ============================================================================
+// 9. VERCEL HANDLER
+// ============================================================================
+
+module.exports = async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') { res.status(204).end(); return; }
+  if (req.method !== 'POST')    { res.status(405).json({ error: 'Method Not Allowed' }); return; }
+
+  let body = req.body;
+  if (typeof body === 'string') {
+    try { body = JSON.parse(body); } catch { body = {}; }
   }
-  if (n >= 1000) return `$${Math.round(n / 1000)}k`;
-  return `$${n}`;
-}
+  const message = (body && body.message) ? String(body.message) : '';
+  if (!message.trim()) { res.status(400).json({ error: 'Empty message' }); return; }
 
-function buildPrevStateFromHistory(history) {
-  if (!Array.isArray(history) || history.length === 0) return null;
-  const prevMessages = [];
-  for (const m of history) {
-    if (m?.role && m?.content) prevMessages.push({ role: m.role, content: normalizeText(m.content) });
-  }
-  if (prevMessages.length === 0) return null;
-  return buildSearchState(prevMessages);
-}
+  const intent = classifyIntent(message);
+  let result;
+  if      (intent === 'search') result = handleSearchTurn(message);
+  else if (intent === 'lead')   result = handleLeadTurn();
+  else                          result = handleSmalltalkTurn();
 
-function generateSmartReply(prevState, newState, proxyMessage) {
-  // No prior state → first-search welcome (or proxy override)
-  if (!prevState || (!prevState.city && !prevState.bedsMin && !prevState.priceMax && !prevState.priceMin && !prevState.bathsMin)) {
-    return proxyMessage || "Got it. Pulling options for you now.";
-  }
+  res.status(200).json(result);
+};
 
-  const changes = [];
-  const carried = [];
-  let cityChanged = false;
-
-  // City change
-  if (newState.city && prevState.city && newState.city !== prevState.city) {
-    cityChanged = true;
-    changes.push(`Swapped to ${titleCase(newState.city)}`);
-    if (prevState.bedsMin && newState.bedsMin === prevState.bedsMin) carried.push("beds");
-    if (prevState.priceMax && newState.priceMax === prevState.priceMax) carried.push("price");
-    if (prevState.bathsMin && newState.bathsMin === prevState.bathsMin) carried.push("baths");
-  }
-
-  // Beds
-  if (newState.bedsMin && prevState.bedsMin && newState.bedsMin !== prevState.bedsMin) {
-    const dir = newState.bedsMin > prevState.bedsMin ? "Bumped" : "Tightened";
-    changes.push(`${dir} it to ${newState.bedsMin} beds`);
-  } else if (newState.bedsMin && !prevState.bedsMin) {
-    changes.push(`Added ${newState.bedsMin}+ beds`);
-  }
-
-  // Baths
-  if (newState.bathsMin && prevState.bathsMin && newState.bathsMin !== prevState.bathsMin) {
-    changes.push(`Baths now ${newState.bathsMin}+`);
-  } else if (newState.bathsMin && !prevState.bathsMin) {
-    changes.push(`Added ${newState.bathsMin}+ baths`);
-  }
-
-  // Price max
-  if (newState.priceMax && prevState.priceMax && newState.priceMax !== prevState.priceMax) {
-    const dir = newState.priceMax < prevState.priceMax ? "Dropped budget to" : "Raised budget to";
-    changes.push(`${dir} ${formatPrice(newState.priceMax)}`);
-  } else if (newState.priceMax && !prevState.priceMax) {
-    changes.push(`Capped at ${formatPrice(newState.priceMax)}`);
-  }
-
-  // Price min
-  if (newState.priceMin && prevState.priceMin !== newState.priceMin) {
-    changes.push(`Floor set at ${formatPrice(newState.priceMin)}`);
-  }
-
-  // Type
-  if (newState.type && prevState.type !== newState.type) {
-    changes.push(`Type set to ${newState.type}`);
-  }
-
-  // If proxy fired on a city change, let the proxy message lead
-  if (cityChanged && proxyMessage) {
-    let reply = proxyMessage;
-    if (carried.length > 0) reply += ` Kept your ${carried.join(" and ")}.`;
-    return reply;
-  }
-
-  if (changes.length === 0) {
-    return proxyMessage || "Refreshing your results.";
-  }
-
-  let reply = changes.join(" — ") + ".";
-  if (carried.length > 0) {
-    reply += ` Kept your ${carried.join(" and ")}.`;
-  }
-  return reply;
-}
-
-async function callOpenAI(messages, prompt) {
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.OPEN_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      temperature: 0.2,
-      max_tokens: 400,
-      messages: [{ role: "system", content: prompt }, ...messages]
-    })
-  });
-  const data = await response.json();
-  if (!response.ok) throw new Error(JSON.stringify(data));
-  return data.choices?.[0]?.message?.content || "No response";
-}
-
-export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
-
-  const { message, history } = req.body || {};
-  if (!message) return res.status(400).json({ error: "Missing message" });
-
-  const messages = [];
-  if (Array.isArray(history)) {
-    for (const m of history) {
-      if (m?.role && m?.content) messages.push({ role: m.role, content: normalizeText(m.content) });
-    }
-  }
-  messages.push({ role: "user", content: normalizeText(message) });
-
-  try {
-    const state = buildSearchState(messages);
-    const prevState = buildPrevStateFromHistory(history);
-    const combinedText = messages.filter(m => m.role === "user").map(m => m.content).join(" ");
-
-    if (state.resetRequested && !state.city && !state.bedsMin && !state.priceMin && !state.priceMax) {
-      return res.status(200).json({ reply: "Cleared. What are we looking for now?", reset: true });
-    }
-
-    if (shouldTriggerSearch(state, combinedText)) {
-      const built = buildLayeredUrl(state);
-      if (built) {
-        const reply = generateSmartReply(prevState, state, built.proxyMessage);
-        return res.status(200).json({
-          reply,
-          searchUrl: built.url,
-          routeType: built.routeType,
-          matchedCity: state.city,
-          filters: {
-            city: state.city,
-            bedsMin: state.bedsMin,
-            bathsMin: state.bathsMin,
-            priceMin: state.priceMin,
-            priceMax: state.priceMax,
-            type: state.type,
-            features: state.features
-          }
-        });
-      }
-      return res.status(200).json({
-        reply: "That market isn't mapping cleanly in our live feed. Want Austin, San Antonio, or Highland Lakes inventory instead?",
-        routeType: "fallback"
-      });
-    }
-
-    const reply = await callOpenAI(messages, DALTON_SYSTEM_PROMPT);
-    return res.status(200).json({ reply, filters: state });
-  } catch (err) {
-    console.error("DALTON ERROR:", err);
-    return res.status(500).json({ reply: "Something went wrong. Please try again.", error: err.message });
-  }
-}
+// Exported for tests
+module.exports.resolveLocation    = resolveLocation;
+module.exports.parseFilters       = parseFilters;
+module.exports.buildPropertiesUrl = buildPropertiesUrl;
+module.exports.handleSearchTurn   = handleSearchTurn;
+module.exports.classifyIntent     = classifyIntent;
