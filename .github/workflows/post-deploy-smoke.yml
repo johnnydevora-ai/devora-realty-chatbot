@@ -1,70 +1,52 @@
 # .github/workflows/post-deploy-smoke.yml
 # Two jobs:
-#   1. `test` runs on every push and PR. It installs dependencies, runs
-#      Jest, and does a `next build` sanity check. This catches the
-#      "no exported handler" class of regression before merge.
-#   2. `live-smoke` only runs after a successful Production deployment
-#      (GitHub receives a `deployment_status` event from Vercel). It POSTs
-#      a realistic payload to /api/dalton and fails the check if the
-#      response is not 200.
-#
-# No secrets required. The built-in GITHUB_TOKEN has the default
-# read-only permissions needed by actions/checkout.
+#   test       - install deps, run jest, next build (every push/PR)
+#   live-smoke - POST /api/dalton after every successful Production
+#                deployment_status event from Vercel, expect 200
 
 name: post-deploy-smoke
 
 on:
   push:
-      branches: ['**']
-        pull_request:
-            branches: ['**']
-              deployment_status:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+  deployment_status:
 
-              permissions:
-                contents: read
+permissions:
+  contents: read
 
-                jobs:
-                  test:
-                      if: github.event_name != 'deployment_status'
-                          runs-on: ubuntu-latest
-                              steps:
-                                    - name: Checkout
-                                            uses: actions/checkout@v4
-
-                                                  - name: Set up Node
-                                                          uses: actions/setup-node@v4
-                                                                  with:
-                                                                            node-version: '20'
-
-                                                                                  - name: Install dependencies
-                                                                                          run: npm install --no-audit --no-fund
-
-                                                                                                - name: Run tests
-                                                                                                        run: npm test -- --ci
-                                                                                                        
-                                                                                                              - name: Build (sanity check)
-                                                                                                                      run: npm run build
-                                                                                                                              env:
-                                                                                                                                        NEXT_TELEMETRY_DISABLED: '1'
-                                                                                                                                        
-                                                                                                                                          live-smoke:
-                                                                                                                                              if: >
-                                                                                                                                                    github.event_name == 'deployment_status' &&
-                                                                                                                                                          github.event.deployment_status.state == 'success' &&
-                                                                                                                                                                github.event.deployment.environment == 'Production'
-                                                                                                                                                                    runs-on: ubuntu-latest
-                                                                                                                                                                        steps:
-                                                                                                                                                                              - name: POST /api/dalton and expect 200
-                                                                                                                                                                                      run: |
-                                                                                                                                                                                                set -euo pipefail
-                                                                                                                                                                                                          URL="${{ github.event.deployment_status.target_url }}/api/dalton"
-                                                                                                                                                                                                                    echo "Testing $URL"
-                                                                                                                                                                                                                              code=$(curl -sS -o /tmp/body -w "%{http_code}" -X POST "$URL" \
-                                                                                                                                                                                                                                          -H "Content-Type: application/json" \
-                                                                                                                                                                                                                                                      -d '{"message":"3 bed house in East Austin under 750k"}')
-                                                                                                                                                                                                                                                                echo "HTTP $code"
-                                                                                                                                                                                                                                                                          echo "--- body ---"
-                                                                                                                                                                                                                                                                                    cat /tmp/body || true
-                                                                                                                                                                                                                                                                                              echo
-                                                                                                                                                                                                                                                                                                        test "$code" = "200"
-                                                                                                                                                                                                                                                                                                        
+jobs:
+  test:
+    if: github.event_name != 'deployment_status'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Run tests
+        run: npm test -- --ci
+      - name: Build sanity check
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+  live-smoke:
+    if: github.event_name == 'deployment_status' && github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Production'
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /api/dalton and expect 200
+        run: |
+          set -euo pipefail
+          URL="${{ github.event.deployment_status.target_url }}/api/dalton"
+          echo "Testing $URL"
+          code=$(curl -sS -o /tmp/body -w "%{http_code}" -X POST "$URL" -H "Content-Type: application/json" -d '{"message":"3 bed house in East Austin under 750k"}')
+          echo "HTTP $code"
+          echo "--- body ---"
+          cat /tmp/body || true
+          echo
+          test "$code" = "200"
