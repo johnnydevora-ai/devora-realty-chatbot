@@ -1,8 +1,8 @@
 # .github/workflows/post-deploy-smoke.yml
 # Two jobs:
-#   test       - install deps, run jest, next build (every push/PR)
-#   live-smoke - POST /api/dalton after every successful Production
-#                deployment_status event from Vercel, expect 200
+#   test        - install deps, run guardrails, jest, next build (every push/PR)
+#   live-smoke  - POST /api/dalton after every successful Production
+#                 deployment_status event from Vercel, expect 200
 
 name: post-deploy-smoke
 
@@ -29,6 +29,8 @@ jobs:
           node-version: '20'
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+      - name: Guardrails (check:api-exports)
+        run: npm run check:api-exports
       - name: Run tests
         run: npm test -- --ci
       - name: Build sanity check
