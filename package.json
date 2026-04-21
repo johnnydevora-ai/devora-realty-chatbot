@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "jest --passWithNoTests"
+    "test": "jest --passWithNoTests",
+    "check:api-exports": "node scripts/check-api-exports.js",
+    "guardrails": "npm run check:api-exports"
   },
   "dependencies": {
     "next": "13.5.6",
