@@ -1,9 +1,9 @@
 // pages/api/lead.js
-// DALTON Lead Capture -> AgentFire Lead Manager -> Follow Up Boss
-// Phase Two: Lead Pipeline Stabilization + Security
+// DALTON Lead Capture -> Follow Up Boss (direct)
+// Phase 2 hardening retained; AgentFire forwarding removed (Option A1).
 //
 // Contract:
-//   POST /api/lead   -> forwards to AgentFire
+//   POST /api/lead   -> creates FUB person + best-effort note
 //   OPTIONS          -> CORS preflight (allowlisted origins only)
 //   *                -> 405 { ok:false, error:"Method not allowed" }
 
@@ -38,225 +38,251 @@ function applyCors(req, res) {
   return false;
 }
 
-// ---------- Tiny in-memory rate limit (5 / IP / minute) ----------
+// ---------- Rate limit (in-memory, per IP) ----------
 const RATE_LIMIT_MAX = 5;
 const RATE_LIMIT_WINDOW_MS = 60000;
-const rateBucket = new Map();
+const rlBuckets = new Map(); // ip -> [timestamps]
 
 function getClientIp(req) {
   const xff = req.headers["x-forwarded-for"];
-  if (typeof xff === "string" && xff.length) return xff.split(",")[0].trim();
+  if (typeof xff === "string" && xff.length > 0) {
+    return xff.split(",")[0].trim();
+  }
   return req.socket?.remoteAddress || "unknown";
 }
 
 function rateLimited(ip) {
   const now = Date.now();
-  const arr = (rateBucket.get(ip) || []).filter(
-    (t) => now - t < RATE_LIMIT_WINDOW_MS
-  );
-  if (arr.length >= RATE_LIMIT_MAX) {
-    rateBucket.set(ip, arr);
+  const cutoff = now - RATE_LIMIT_WINDOW_MS;
+  const arr = rlBuckets.get(ip) || [];
+  const recent = arr.filter((t) => t > cutoff);
+  if (recent.length >= RATE_LIMIT_MAX) {
+    rlBuckets.set(ip, recent);
     return true;
   }
-  arr.push(now);
-  rateBucket.set(ip, arr);
+  recent.push(now);
+  rlBuckets.set(ip, recent);
   return false;
 }
 
 // ---------- Validation ----------
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function isNonEmptyString(v) {
+  return typeof v === "string" && v.trim().length > 0;
+}
 
-function validate(body) {
-  const errors = {};
-  const b = body && typeof body === "object" ? body : {};
-
-  const sessionId = typeof b.sessionId === "string" ? b.sessionId.trim() : "";
-  const name = typeof b.name === "string" ? b.name.trim() : "";
-  const email = typeof b.email === "string" ? b.email.trim() : "";
-  const phone = typeof b.phone === "string" ? b.phone.trim() : "";
-  const note = typeof b.note === "string" ? b.note : "";
-  const pageUrl = typeof b.pageUrl === "string" ? b.pageUrl.trim() : "";
-  const lastSearchUrl =
-    typeof b.lastSearchUrl === "string" ? b.lastSearchUrl.trim() : "";
-  const history = Array.isArray(b.history) ? b.history : [];
-
-  if (!sessionId) errors.sessionId = "required";
-  if (!name) errors.name = "required";
-  if (!email || !EMAIL_RE.test(email)) errors.email = "invalid";
-  if (phone && phone.replace(/\D/g, "").length < 7) errors.phone = "invalid";
-
-  return {
-    ok: Object.keys(errors).length === 0,
-    errors,
-    data: { sessionId, name, email, phone, note, pageUrl, lastSearchUrl, history },
-  };
+function validatePayload(body) {
+  if (!body || typeof body !== "object") return "invalid_body";
+  const required = ["sessionId", "name", "email", "phone", "pageUrl"];
+  for (const k of required) {
+    if (!isNonEmptyString(body[k])) return `missing_${k}`;
+  }
+  // optional fields: note, lastSearchUrl, history
+  if (body.history != null && !Array.isArray(body.history)) {
+    return "invalid_history";
+  }
+  return null;
 }
 
 function splitName(full) {
-  const parts = full.split(/\s+/);
-  const first_name = parts.shift() || "";
-  const last_name = parts.join(" ");
-  return { first_name, last_name };
+  const parts = String(full).trim().split(/\s+/);
+  if (parts.length === 1) return { firstName: parts[0], lastName: "" };
+  return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
 }
 
-function buildComments({ note, lastSearchUrl, history }) {
+function summarizeHistory(history) {
+  if (!Array.isArray(history) || history.length === 0) return "";
   const lines = [];
-  if (note) lines.push(note);
-  if (lastSearchUrl) lines.push(`Last Search: ${lastSearchUrl}`);
-  if (history.length) {
-    lines.push("--- Recent Conversation ---");
-    for (const m of history.slice(-8)) {
-      if (m && m.role && m.content) {
-        const who = m.role === "user" ? "Lead" : "Dalton";
-        lines.push(`${who}: ${String(m.content).trim()}`);
-      }
-    }
+  for (const m of history) {
+    if (!m || typeof m !== "object") continue;
+    const role = m.role === "assistant" ? "DALTON" : m.role === "user" ? "User" : (m.role || "msg");
+    const content = typeof m.content === "string" ? m.content : "";
+    if (!content) continue;
+    const trimmed = content.length > 500 ? content.slice(0, 500) + "..." : content;
+    lines.push(`${role}: ${trimmed}`);
   }
   return lines.join("\n");
 }
 
-// ---------- Structured logging (no PII) ----------
-function logEvent(obj) {
+// ---------- Logging (no PII) ----------
+function log(evt, fields) {
   try {
-    console.log(JSON.stringify({ evt: "dalton_lead_forward", ...obj }));
+    const line = JSON.stringify({ evt, ...fields });
+    console.log(line);
   } catch {
-    /* never throw from a logger */
+    // swallow
   }
+}
+
+// ---------- Follow Up Boss client ----------
+const FUB_BASE = "https://api.followupboss.com/v1";
+
+function fubAuthHeader() {
+  const key = process.env.FUB_API_KEY || "";
+  const token = Buffer.from(`${key}:`).toString("base64");
+  return `Basic ${token}`;
+}
+
+async function fubCreatePerson({ firstName, lastName, email, phone, pageUrl }) {
+  const body = {
+    source: "dalton_chatbot",
+    system: "Dalton",
+    firstName,
+    lastName,
+    emails: [{ value: email, type: "home" }],
+    phones: [{ value: phone, type: "mobile" }],
+    tags: ["dalton_chatbot"],
+    sourceUrl: pageUrl,
+  };
+  const r = await fetch(`${FUB_BASE}/people`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": fubAuthHeader(),
+      "X-System": "Dalton",
+      "X-System-Key": "dalton-realty-widget",
+    },
+    body: JSON.stringify(body),
+  });
+  let json = null;
+  try { json = await r.json(); } catch {}
+  return { status: r.status, ok: r.ok, json };
+}
+
+async function fubCreateNote({ personId, pageUrl, lastSearchUrl, transcript, sessionId, submittedAt, note }) {
+  const lines = [];
+  if (note) lines.push(`Lead note: ${note}`);
+  if (pageUrl) lines.push(`Page: ${pageUrl}`);
+  if (lastSearchUrl) lines.push(`Last Search: ${lastSearchUrl}`);
+  if (transcript) {
+    lines.push("--- Conversation ---");
+    lines.push(transcript);
+  }
+  lines.push(`Session: ${sessionId}`);
+  lines.push(`Submitted: ${submittedAt}`);
+  const body = {
+    personId,
+    subject: "DALTON Chatbot Lead",
+    body: lines.join("\n"),
+    isHtml: false,
+  };
+  const r = await fetch(`${FUB_BASE}/notes`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": fubAuthHeader(),
+      "X-System": "Dalton",
+      "X-System-Key": "dalton-realty-widget",
+    },
+    body: JSON.stringify(body),
+  });
+  return { status: r.status, ok: r.ok };
 }
 
 // ---------- Handler ----------
 export default async function handler(req, res) {
   const requestId = randomUUID();
-  const startedAt = Date.now();
+  const started = Date.now();
 
-  const corsOk = applyCors(req, res);
-
+  // CORS preflight
   if (req.method === "OPTIONS") {
-    if (!corsOk) return res.status(403).end();
-    return res.status(204).end();
+    const allowed = applyCors(req, res);
+    if (!allowed) {
+      res.status(403).json({ ok: false, error: "origin_not_allowed", requestId });
+      return;
+    }
+    res.status(204).end();
+    return;
   }
 
-  if (!corsOk && req.headers.origin) {
-    return res
-      .status(403)
-      .json({ ok: false, error: "origin_not_allowed", requestId });
-  }
+  // Apply CORS for actual requests too (so browsers can read response)
+  applyCors(req, res);
 
   if (req.method !== "POST") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
   }
-
-  const ip = getClientIp(req);
-  if (rateLimited(ip)) {
-    logEvent({
-      ok: false,
-      status: 429,
-      durationMs: Date.now() - startedAt,
-      requestId,
-    });
-    return res
-      .status(429)
-      .json({ ok: false, error: "rate_limited", requestId });
-  }
-
-  const v = validate(req.body);
-  if (!v.ok) {
-    logEvent({
-      ok: false,
-      status: 400,
-      durationMs: Date.now() - startedAt,
-      requestId,
-      sessionId: v.data.sessionId || null,
-      pageUrl: v.data.pageUrl || null,
-      fields: Object.keys(v.errors),
-    });
-    return res.status(400).json({
-      ok: false,
-      error: "validation_error",
-      fields: v.errors,
-      requestId,
-    });
-  }
-
-  const { sessionId, name, email, phone, note, pageUrl, lastSearchUrl, history } =
-    v.data;
-
-  const agentFireUrl = process.env.AGENTFIRE_LEAD_URL;
-  if (!agentFireUrl) {
-    logEvent({
-      ok: false,
-      status: 500,
-      durationMs: Date.now() - startedAt,
-      requestId,
-      sessionId,
-      pageUrl,
-      reason: "missing_env",
-    });
-    return res
-      .status(500)
-      .json({ ok: false, error: "internal_error", requestId });
-  }
-
-  const { first_name, last_name } = splitName(name);
-  const submittedAt = new Date().toISOString();
-
-  const payload = {
-    first_name,
-    last_name,
-    email_address: email,
-    phone_number: phone || undefined,
-    source: "dalton_chatbot",
-    source_url: pageUrl || undefined,
-    tags: ["dalton_chatbot"],
-    other: {
-      Comments: buildComments({ note, lastSearchUrl, history }),
-      dalton_session_id: sessionId,
-      submitted_at: submittedAt,
-    },
-  };
 
   try {
-    const upstream = await fetch(agentFireUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        "User-Agent": "Dalton/1.0 (+devorarealty.com)",
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const status = upstream.status;
-    const ok = upstream.ok;
-
-    logEvent({
-      ok,
-      status,
-      durationMs: Date.now() - startedAt,
-      sessionId,
-      pageUrl,
-      requestId,
-    });
-
-    if (!ok) {
-      return res
-        .status(502)
-        .json({ ok: false, error: "upstream_error", requestId });
+    const ip = getClientIp(req);
+    if (rateLimited(ip)) {
+      log("dalton_lead_ratelimited", { requestId, ip });
+      res.status(429).json({ ok: false, error: "rate_limited", requestId });
+      return;
     }
 
-    return res.status(200).json({ ok: true, leadId: null, requestId });
-  } catch (err) {
-    logEvent({
-      ok: false,
-      status: 500,
-      durationMs: Date.now() - startedAt,
+    const body = req.body && typeof req.body === "object" ? req.body : null;
+    const verr = validatePayload(body);
+    if (verr) {
+      log("dalton_lead_validation", { requestId, reason: verr });
+      res.status(400).json({ ok: false, error: "validation_error", requestId });
+      return;
+    }
+
+    const { sessionId, name, email, phone, pageUrl } = body;
+    const note = typeof body.note === "string" ? body.note : "";
+    const lastSearchUrl = typeof body.lastSearchUrl === "string" ? body.lastSearchUrl : "";
+    const history = Array.isArray(body.history) ? body.history : [];
+    const { firstName, lastName } = splitName(name);
+    const transcript = summarizeHistory(history);
+    const submittedAt = new Date().toISOString();
+
+    if (!process.env.FUB_API_KEY) {
+      log("dalton_lead_misconfig", { requestId, reason: "missing_fub_key" });
+      res.status(500).json({ ok: false, error: "internal_error", requestId });
+      return;
+    }
+
+    const personRes = await fubCreatePerson({ firstName, lastName, email, phone, pageUrl });
+    const personId = personRes.json && (personRes.json.id || personRes.json.personId);
+
+    if (!personRes.ok || !personId) {
+      log("dalton_lead_forward", {
+        requestId,
+        ok: false,
+        status: personRes.status,
+        durationMs: Date.now() - started,
+        sessionId,
+        pageUrl,
+        stage: "person",
+      });
+      res.status(502).json({ ok: false, error: "upstream_error", requestId });
+      return;
+    }
+
+    // Best-effort note (do not fail lead if note fails)
+    let noteStatus = null;
+    try {
+      const nr = await fubCreateNote({
+        personId,
+        pageUrl,
+        lastSearchUrl,
+        transcript,
+        sessionId,
+        submittedAt,
+        note,
+      });
+      noteStatus = nr.status;
+    } catch (e) {
+      noteStatus = "exception";
+    }
+
+    log("dalton_lead_forward", {
+      requestId,
+      ok: true,
+      status: personRes.status,
+      noteStatus,
+      durationMs: Date.now() - started,
       sessionId,
       pageUrl,
-      requestId,
-      reason: "exception",
     });
-    return res
-      .status(500)
-      .json({ ok: false, error: "internal_error", requestId });
+
+    res.status(200).json({ ok: true, leadId: personId, requestId });
+  } catch (err) {
+    log("dalton_lead_error", {
+      requestId,
+      message: err && err.message ? err.message : "unknown",
+      durationMs: Date.now() - started,
+    });
+    res.status(500).json({ ok: false, error: "internal_error", requestId });
   }
 }
