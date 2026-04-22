@@ -1,6 +1,7 @@
 // pages/api/lead.js
 // DALTON Lead Capture -> Follow Up Boss (direct)
 // Phase 2 hardening retained; AgentFire forwarding removed (Option A1).
+// Phase 2C: widget-contract compatibility (accepts widget's native save-search payload).
 //
 // Contract:
 //   POST /api/lead   -> creates FUB person + best-effort note
@@ -15,7 +16,6 @@ const STATIC_ALLOWED_ORIGINS = new Set([
   "https://www.devorarealty.com",
 ]);
 
-// Allow approved Vercel preview URLs for this project only.
 const PREVIEW_ORIGIN_RE =
   /^https:\/\/devora-realty-chatbot(?:-[a-z0-9-]+)?\.vercel\.app$/i;
 
@@ -41,7 +41,7 @@ function applyCors(req, res) {
 // ---------- Rate limit (in-memory, per IP) ----------
 const RATE_LIMIT_MAX = 5;
 const RATE_LIMIT_WINDOW_MS = 60000;
-const rlBuckets = new Map(); // ip -> [timestamps]
+const rlBuckets = new Map();
 
 function getClientIp(req) {
   const xff = req.headers["x-forwarded-for"];
@@ -70,13 +70,48 @@ function isNonEmptyString(v) {
   return typeof v === "string" && v.trim().length > 0;
 }
 
+// Adapt incoming payload: support both widget-native shape and canonical shape.
+// Widget sends: { name, email, phone, searchUrl, filters, transcript }
+// Canonical:    { sessionId, name, email, phone, pageUrl, lastSearchUrl, note, history }
+function adaptIncomingPayload(body, req) {
+  if (!body || typeof body !== "object") return body;
+  const out = { ...body };
+
+  if (!isNonEmptyString(out.lastSearchUrl) && isNonEmptyString(out.searchUrl)) {
+    out.lastSearchUrl = out.searchUrl;
+  }
+
+  if (!Array.isArray(out.history) && Array.isArray(out.transcript)) {
+    out.history = out.transcript;
+  }
+
+  if (!isNonEmptyString(out.sessionId)) {
+    out.sessionId = "auto-" + randomUUID();
+  }
+
+  if (!isNonEmptyString(out.pageUrl)) {
+    const ref = req.headers.referer || req.headers.referrer || "";
+    if (typeof ref === "string" && ref.length > 0) {
+      out.pageUrl = ref;
+    } else {
+      out.pageUrl = "https://devorarealty.com/";
+    }
+  }
+
+  return out;
+}
+
 function validatePayload(body) {
   if (!body || typeof body !== "object") return "invalid_body";
-  const required = ["sessionId", "name", "email", "phone", "pageUrl"];
-  for (const k of required) {
-    if (!isNonEmptyString(body[k])) return `missing_${k}`;
-  }
-  // optional fields: note, lastSearchUrl, history
+
+  if (!isNonEmptyString(body.name)) return "missing_name";
+  const hasEmail = isNonEmptyString(body.email);
+  const hasPhone = isNonEmptyString(body.phone);
+  if (!hasEmail && !hasPhone) return "missing_contact";
+
+  if (!isNonEmptyString(body.sessionId)) return "missing_sessionId";
+  if (!isNonEmptyString(body.pageUrl)) return "missing_pageUrl";
+
   if (body.history != null && !Array.isArray(body.history)) {
     return "invalid_history";
   }
@@ -108,9 +143,7 @@ function log(evt, fields) {
   try {
     const line = JSON.stringify({ evt, ...fields });
     console.log(line);
-  } catch {
-    // swallow
-  }
+  } catch {}
 }
 
 // ---------- Follow Up Boss client ----------
@@ -128,11 +161,11 @@ async function fubCreatePerson({ firstName, lastName, email, phone, pageUrl }) {
     system: "Dalton",
     firstName,
     lastName,
-    emails: [{ value: email, type: "home" }],
-    phones: [{ value: phone, type: "mobile" }],
     tags: ["dalton_chatbot"],
     sourceUrl: pageUrl,
   };
+  if (email) body.emails = [{ value: email, type: "home" }];
+  if (phone) body.phones = [{ value: phone, type: "mobile" }];
   const r = await fetch(`${FUB_BASE}/people`, {
     method: "POST",
     headers: {
@@ -183,7 +216,6 @@ export default async function handler(req, res) {
   const requestId = randomUUID();
   const started = Date.now();
 
-  // CORS preflight
   if (req.method === "OPTIONS") {
     const allowed = applyCors(req, res);
     if (!allowed) {
@@ -194,7 +226,6 @@ export default async function handler(req, res) {
     return;
   }
 
-  // Apply CORS for actual requests too (so browsers can read response)
   applyCors(req, res);
 
   if (req.method !== "POST") {
@@ -206,15 +237,16 @@ export default async function handler(req, res) {
     const ip = getClientIp(req);
     if (rateLimited(ip)) {
       log("dalton_lead_ratelimited", { requestId, ip });
-      res.status(429).json({ ok: false, error: "rate_limited", requestId });
+      res.status(429).json({ ok: false, error: "rate_limited", requestId, d: { ok: false, error: "rate_limited" } });
       return;
     }
 
-    const body = req.body && typeof req.body === "object" ? req.body : null;
+    const rawBody = req.body && typeof req.body === "object" ? req.body : null;
+    const body = adaptIncomingPayload(rawBody, req);
     const verr = validatePayload(body);
     if (verr) {
       log("dalton_lead_validation", { requestId, reason: verr });
-      res.status(400).json({ ok: false, error: "validation_error", requestId });
+      res.status(400).json({ ok: false, error: "validation_error", reason: verr, requestId, d: { ok: false, error: verr } });
       return;
     }
 
@@ -228,11 +260,17 @@ export default async function handler(req, res) {
 
     if (!process.env.FUB_API_KEY) {
       log("dalton_lead_misconfig", { requestId, reason: "missing_fub_key" });
-      res.status(500).json({ ok: false, error: "internal_error", requestId });
+      res.status(500).json({ ok: false, error: "internal_error", requestId, d: { ok: false, error: "internal_error" } });
       return;
     }
 
-    const personRes = await fubCreatePerson({ firstName, lastName, email, phone, pageUrl });
+    const personRes = await fubCreatePerson({
+      firstName,
+      lastName,
+      email: email || "",
+      phone: phone || "",
+      pageUrl,
+    });
     const personId = personRes.json && (personRes.json.id || personRes.json.personId);
 
     if (!personRes.ok || !personId) {
@@ -245,11 +283,10 @@ export default async function handler(req, res) {
         pageUrl,
         stage: "person",
       });
-      res.status(502).json({ ok: false, error: "upstream_error", requestId });
+      res.status(502).json({ ok: false, error: "upstream_error", requestId, d: { ok: false, error: "upstream_error" } });
       return;
     }
 
-    // Best-effort note (do not fail lead if note fails)
     let noteStatus = null;
     try {
       const nr = await fubCreateNote({
@@ -276,13 +313,13 @@ export default async function handler(req, res) {
       pageUrl,
     });
 
-    res.status(200).json({ ok: true, leadId: personId, requestId });
+    res.status(200).json({ ok: true, leadId: personId, requestId, d: { ok: true, personId } });
   } catch (err) {
     log("dalton_lead_error", {
       requestId,
       message: err && err.message ? err.message : "unknown",
       durationMs: Date.now() - started,
     });
-    res.status(500).json({ ok: false, error: "internal_error", requestId });
+    res.status(500).json({ ok: false, error: "internal_error", requestId, d: { ok: false, error: "internal_error" } });
   }
 }
