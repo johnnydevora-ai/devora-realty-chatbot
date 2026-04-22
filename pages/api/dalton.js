@@ -1,4 +1,4 @@
-// pages/api/dalton.js
+undefined// pages/api/dalton.js
 // Devora Realty - Dalton V2 (Central + South Texas Routing Engine)
 //
 // Hardening notes (harden/dalton-api):
@@ -405,7 +405,16 @@ function handleSearchTurn(userMessage) {
         return { kind: 'askLocation', text: `Quick check - did you mean ${names}?` };
   }
 
-  if (loc.type === 'unknown') {
+  if (loc.type === 'unknown' && (filters.priceMax || filters.priceMin || filters.bedsMin || filters.bathsMin)) {
+        const austinDefault = { type: 'city', city: 'Austin' };
+        return {
+            kind: 'results',
+            url: buildPropertiesUrl(austinDefault, filters),
+            text: summarize(austinDefault, filters) + ' (Austin metro by default - say a neighborhood to narrow.)',
+        };
+    }
+
+    if (loc.type === 'unknown') {
         return {
                 kind: 'askLocation',
                 text: "Which area are you focused on? I cover Austin and San Antonio plus surrounding metros - e.g. East Austin, Mueller, Round Rock, Cedar Park, Alamo Heights, Stone Oak, Boerne, New Braunfels.",
@@ -425,11 +434,21 @@ function handleSearchTurn(userMessage) {
 
 function classifyIntent(userMessage) {
     const t = String(userMessage || '').toLowerCase();
-    if (/\b(home|house|property|listing|condo|townhome|bed|bath|zip|neighborhood|area)\b/.test(t)) {
-          return 'search';
-    }
-    if (/\b(agent|broker|contact|email|call|schedule|tour|showing)\b/.test(t)) {
-          return 'lead';
+    // Search keywords (with plural/suffix tolerance) + property types + location/budget signals
+    const SEARCH_RE = /\b(homes?|houses?|propert(?:y|ies)|listings?|condos?|townhomes?|apartments?|lofts?|ranches?|farms?|land|lots?|acres?|bed(?:room)?s?|bath(?:room)?s?|sqft|sq\s*ft|zip|neighborhood|area|market|buy|browse|show\s+me|find|search|pull|pulling|looking)\b/;
+    // Texas ZIP code (7xxxx)
+    const ZIP_RE = /\b7[0-9]{4}\b/;
+    // Budget signals: 500k, 1.5m, $500,000, under 600, max 800k
+    const BUDGET_RE = /(\$|\bunder\b|\bmax\b|\bup\s+to\b|\bless\s+than\b|\bover\b|\bmin\b)\s*[0-9]|\b[0-9]+(?:\.[0-9]+)?\s*[km]\b/;
+    // Known Texas location tokens
+    const LOC_RE = /\b(austin|atx|san\s*antonio|sa\b|boerne|pflugerville|cedar\s*park|leander|round\s*rock|kyle|buda|manor|new\s*braunfels|schertz|cibolo|georgetown|hutto|lakeway|westlake|mueller|tarrytown|downtown|soco|eanes|isd)\b/;
+
+    if (SEARCH_RE.test(t)) return 'search';
+    if (ZIP_RE.test(t)) return 'search';
+    if (BUDGET_RE.test(t)) return 'search';
+    if (LOC_RE.test(t)) return 'search';
+    if (/\b(agent|broker|contact|email|call|schedule|tour|showing|appointment|meet)\b/.test(t)) {
+        return 'lead';
     }
     return 'smalltalk';
 }
