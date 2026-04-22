@@ -466,7 +466,13 @@ const handler = apiRoute(async (req, res) => {
           intent === 'lead' ? handleLeadTurn() :
           handleSmalltalkTurn();
 
-                           res.status(200);
+                           // Widget-contract aliases (DALTON widget expects reply/searchUrl)
+    if (result && typeof result === 'object') {
+        if (result.text && !result.reply) result.reply = result.text;
+        if (result.url && !result.searchUrl) result.searchUrl = result.url;
+    }
+
+    res.status(200);
     return res.json(result);
 }, { methods: ['POST'] });
 
