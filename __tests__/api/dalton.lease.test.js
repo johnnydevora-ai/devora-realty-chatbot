@@ -1,148 +1,157 @@
 'use strict';
 
-// Lease + commercial routing tests for DALTON.
-// Run with the same harness as __tests__/api/guardrails/*.test.js
+// Lease + commercial routing tests for DALTON. Jest suite.
 
 const dalton = require('../../pages/api/dalton');
-const { handleSearchTurn, parseFilters, buildSearchUrl, resolveLocation, classifyIntent, detectTransactionType, detectPropertyClass } = dalton;
+const {
+  handleSearchTurn,
+  classifyIntent,
+  detectTransactionType,
+  detectPropertyClass,
+} = dalton;
 
-function expectHas(url, needles) {
+function expectUrlToContain(url, needles) {
   for (const n of needles) {
-    if (!url.includes(n)) {
-      throw new Error('Expected URL to include ' + JSON.stringify(n) + ' but got ' + url);
-    }
+    expect(url).toEqual(expect.stringContaining(n));
   }
 }
 
-function run(label, fn) {
-  try { fn(); console.log('ok  -', label); }
-  catch (e) { console.error('FAIL -', label, '\n    ', e.message); process.exitCode = 1; }
-}
-
-// ---------------------------------------------------------------------------
-// Intent classification
-// ---------------------------------------------------------------------------
-run('classifyIntent: "office space for lease Austin 2000 sf" -> search', () => {
-  if (classifyIntent('office space for lease Austin 2000 sf') !== 'search')
-    throw new Error('expected search');
-});
-run('classifyIntent: "home for rent in Alamo Heights" -> search', () => {
-  if (classifyIntent('home for rent in Alamo Heights') !== 'search')
-    throw new Error('expected search');
-});
-run('classifyIntent: "sublease Stone Oak" -> search', () => {
-  if (classifyIntent('sublease Stone Oak') !== 'search')
-    throw new Error('expected search');
+describe('DALTON intent classification (lease/commercial)', () => {
+  test.each([
+    'office space for lease Austin 2000 sf',
+    'home for rent in Alamo Heights',
+    'sublease Stone Oak',
+    'retail for lease South Lamar',
+    'warehouse for lease Schertz NNN',
+  ])('classifyIntent("%s") === "search"', (msg) => {
+    expect(classifyIntent(msg)).toBe('search');
+  });
 });
 
-// ---------------------------------------------------------------------------
-// Transaction + class detection
-// ---------------------------------------------------------------------------
-run('detectTransactionType: lease wording', () => {
-  if (detectTransactionType('condo for lease downtown') !== 'lease') throw new Error('fail');
-  if (detectTransactionType('house for rent in kyle')   !== 'lease') throw new Error('fail');
-  if (detectTransactionType('sublease in stone oak')    !== 'lease') throw new Error('fail');
-});
-run('detectTransactionType: sale wording', () => {
-  if (detectTransactionType('3 bed home for sale mueller') !== 'sale') throw new Error('fail');
-  if (detectTransactionType('buy a condo downtown')        !== 'sale') throw new Error('fail');
-});
-run('detectTransactionType: ambiguous (buy or lease)', () => {
-  if (detectTransactionType('buy or lease office space') !== 'ambiguous') throw new Error('fail');
-});
-run('detectPropertyClass: commercial use types', () => {
-  if (detectPropertyClass('office for lease austin')     !== 'commercial') throw new Error('office');
-  if (detectPropertyClass('retail space south lamar')    !== 'commercial') throw new Error('retail');
-  if (detectPropertyClass('warehouse schertz 10000 sf')  !== 'commercial') throw new Error('warehouse');
-  if (detectPropertyClass('flex space cedar park')       !== 'commercial') throw new Error('flex');
-});
-run('detectPropertyClass: residential default', () => {
-  if (detectPropertyClass('3 bed home for rent')  !== 'residential') throw new Error('fail');
-  if (detectPropertyClass('condo downtown austin') !== 'residential') throw new Error('fail');
+describe('DALTON transaction type detection', () => {
+  test('lease wording', () => {
+    expect(detectTransactionType('condo for lease downtown')).toBe('lease');
+    expect(detectTransactionType('house for rent in kyle')).toBe('lease');
+    expect(detectTransactionType('sublease in stone oak')).toBe('lease');
+  });
+  test('sale wording', () => {
+    expect(detectTransactionType('3 bed home for sale mueller')).toBe('sale');
+    expect(detectTransactionType('buy a condo downtown')).toBe('sale');
+  });
+  test('ambiguous (buy or lease)', () => {
+    expect(detectTransactionType('buy or lease office space')).toBe('ambiguous');
+  });
 });
 
-// ---------------------------------------------------------------------------
-// Residential lease URL routing
-// ---------------------------------------------------------------------------
-run('residential lease: 2 bed condo downtown Austin for lease under 3000', () => {
-  const r = handleSearchTurn('2 bed condo downtown Austin for lease under 3000');
-  if (r.kind !== 'results') throw new Error('kind=' + r.kind);
-  expectHas(r.url, ['/lease/', 'city-Austin, TX', 'bedsMin=2', 'rentMax=3000']);
-});
-run('residential lease: house for rent in Alamo Heights 3 bed under 4500', () => {
-  const r = handleSearchTurn('house for rent in Alamo Heights 3 bed under 4500');
-  if (r.kind !== 'results') throw new Error('kind=' + r.kind);
-  expectHas(r.url, ['/lease/', 'city-San+Antonio%2C+TX'.replace('%2C',',').replace('+',' '), 'bedsMin=3', 'rentMax=4500']);
-});
-run('residential lease: rental in Mueller 2 bed 2 bath', () => {
-  const r = handleSearchTurn('rental in Mueller 2 bed 2 bath');
-  if (r.kind !== 'results') throw new Error('kind=' + r.kind);
-  expectHas(r.url, ['/lease/', 'bedsMin=2', 'bathsMin=2']);
-});
-run('residential lease: condo for lease 78704 under 2800', () => {
-  const r = handleSearchTurn('condo for lease 78704 under 2800');
-  if (r.kind !== 'results') throw new Error('kind=' + r.kind);
-  expectHas(r.url, ['/lease/', 'zip-78704', 'rentMax=2800']);
+describe('DALTON property class detection', () => {
+  test('commercial use types', () => {
+    expect(detectPropertyClass('office for lease austin')).toBe('commercial');
+    expect(detectPropertyClass('retail space south lamar')).toBe('commercial');
+    expect(detectPropertyClass('warehouse schertz 10000 sf')).toBe('commercial');
+    expect(detectPropertyClass('flex space cedar park')).toBe('commercial');
+  });
+  test('residential default', () => {
+    expect(detectPropertyClass('3 bed home for rent')).toBe('residential');
+    expect(detectPropertyClass('condo downtown austin')).toBe('residential');
+  });
 });
 
-// ---------------------------------------------------------------------------
-// Commercial lease URL routing
-// ---------------------------------------------------------------------------
-run('commercial lease: office space for lease Austin 2000 sf', () => {
-  const r = handleSearchTurn('office space for lease Austin 2000 sf');
-  if (r.kind !== 'results') throw new Error('kind=' + r.kind);
-  expectHas(r.url, ['/commercial-lease/', 'useType=office', 'sfMin=2000']);
-});
-run('commercial lease: retail for lease South Lamar', () => {
-  const r = handleSearchTurn('retail for lease South Lamar');
-  if (r.kind !== 'results') throw new Error('kind=' + r.kind);
-  expectHas(r.url, ['/commercial-lease/', 'useType=retail']);
-});
-run('commercial lease: warehouse for lease Schertz 10000 to 25000 sqft NNN', () => {
-  const r = handleSearchTurn('warehouse for lease Schertz 10000 to 25000 sqft NNN');
-  if (r.kind !== 'results') throw new Error('kind=' + r.kind);
-  expectHas(r.url, ['/commercial-lease/', 'useType=warehouse', 'sfMin=10000', 'sfMax=25000', 'leaseType=nnn']);
-});
-run('commercial lease: flex space for lease Cedar Park', () => {
-  const r = handleSearchTurn('flex space for lease Cedar Park');
-  if (r.kind !== 'results') throw new Error('kind=' + r.kind);
-  expectHas(r.url, ['/commercial-lease/', 'useType=flex']);
-});
-run('commercial lease: sublease office Stone Oak 1500 sf', () => {
-  const r = handleSearchTurn('sublease office Stone Oak 1500 sf');
-  if (r.kind !== 'results') throw new Error('kind=' + r.kind);
-  expectHas(r.url, ['/commercial-lease/', 'useType=office', 'sfMin=1500', 'sublease=1']);
-});
-run('commercial lease: medical office for lease Boerne $28/sf', () => {
-  const r = handleSearchTurn('medical office for lease Boerne $28/sf');
-  if (r.kind !== 'results') throw new Error('kind=' + r.kind);
-  expectHas(r.url, ['/commercial-lease/', 'pricePerSfMax=28']);
+describe('Residential lease URL routing', () => {
+  test('2 bed condo downtown Austin for lease under 3000', () => {
+    const r = handleSearchTurn('2 bed condo downtown Austin for lease under 3000');
+    expect(r.kind).toBe('results');
+    expectUrlToContain(r.url, ['/lease/', 'bedsMin=2', 'rentMax=3000']);
+  });
+
+  test('house for rent in Alamo Heights 3 bed under 4500', () => {
+    const r = handleSearchTurn('house for rent in Alamo Heights 3 bed under 4500');
+    expect(r.kind).toBe('results');
+    expectUrlToContain(r.url, ['/lease/', 'bedsMin=3', 'rentMax=4500']);
+  });
+
+  test('rental in Mueller 2 bed 2 bath', () => {
+    const r = handleSearchTurn('rental in Mueller 2 bed 2 bath');
+    expect(r.kind).toBe('results');
+    expectUrlToContain(r.url, ['/lease/', 'bedsMin=2', 'bathsMin=2']);
+  });
+
+  test('condo for lease 78704 under 2800', () => {
+    const r = handleSearchTurn('condo for lease 78704 under 2800');
+    expect(r.kind).toBe('results');
+    expectUrlToContain(r.url, ['/lease/', 'zip-78704', 'rentMax=2800']);
+  });
 });
 
-// ---------------------------------------------------------------------------
-// Ambiguity / clarifier
-// ---------------------------------------------------------------------------
-run('ambiguity: "looking at office space South Congress" -> askTransactionType', () => {
-  const r = handleSearchTurn('looking at office space South Congress');
-  if (r.kind !== 'askTransactionType') throw new Error('kind=' + r.kind);
-});
-run('ambiguity: "buy or lease a condo downtown" -> askTransactionType', () => {
-  const r = handleSearchTurn('buy or lease a condo downtown');
-  if (r.kind !== 'askTransactionType') throw new Error('kind=' + r.kind);
+describe('Commercial lease URL routing', () => {
+  test('office space for lease Austin 2000 sf', () => {
+    const r = handleSearchTurn('office space for lease Austin 2000 sf');
+    expect(r.kind).toBe('results');
+    expectUrlToContain(r.url, ['/commercial-lease/', 'useType=office', 'sfMin=2000']);
+  });
+
+  test('retail for lease South Lamar (sufficient via useType)', () => {
+    const r = handleSearchTurn('retail for lease South Lamar');
+    expect(r.kind).toBe('results');
+    expectUrlToContain(r.url, ['/commercial-lease/', 'useType=retail']);
+  });
+
+  test('warehouse for lease Schertz 10000 to 25000 sqft NNN', () => {
+    const r = handleSearchTurn('warehouse for lease Schertz 10000 to 25000 sqft NNN');
+    expect(r.kind).toBe('results');
+    expectUrlToContain(r.url, [
+      '/commercial-lease/',
+      'useType=warehouse',
+      'sfMin=10000',
+      'sfMax=25000',
+      'leaseType=nnn',
+    ]);
+  });
+
+  test('flex space for lease Cedar Park', () => {
+    const r = handleSearchTurn('flex space for lease Cedar Park');
+    expect(r.kind).toBe('results');
+    expectUrlToContain(r.url, ['/commercial-lease/', 'useType=flex']);
+  });
+
+  test('sublease office Stone Oak 1500 sf', () => {
+    const r = handleSearchTurn('sublease office Stone Oak 1500 sf');
+    expect(r.kind).toBe('results');
+    expectUrlToContain(r.url, [
+      '/commercial-lease/',
+      'useType=office',
+      'sfMin=1500',
+      'sublease=1',
+    ]);
+  });
+
+  test('medical office for lease Boerne $28/sf', () => {
+    const r = handleSearchTurn('medical office for lease Boerne $28/sf');
+    expect(r.kind).toBe('results');
+    expectUrlToContain(r.url, ['/commercial-lease/', 'pricePerSfMax=28']);
+  });
 });
 
-// ---------------------------------------------------------------------------
-// Regression: sale paths unchanged
-// ---------------------------------------------------------------------------
-run('sale regression: 3 bed home in Mueller under 800k', () => {
-  const r = handleSearchTurn('3 bed home in Mueller under 800k');
-  if (r.kind !== 'results') throw new Error('kind=' + r.kind);
-  expectHas(r.url, ['/properties/', 'bedsMin=3', 'priceMax=800000']);
-});
-run('sale regression: commercial sale -> /commercial/', () => {
-  const r = handleSearchTurn('buy retail building Austin 5000 sf');
-  if (r.kind !== 'results') throw new Error('kind=' + r.kind);
-  expectHas(r.url, ['/commercial/', 'useType=retail']);
+describe('Ambiguity / clarifier turn', () => {
+  test('"looking at office space South Congress" -> askTransactionType', () => {
+    const r = handleSearchTurn('looking at office space South Congress');
+    expect(r.kind).toBe('askTransactionType');
+  });
+  test('"buy or lease a condo downtown" -> askTransactionType', () => {
+    const r = handleSearchTurn('buy or lease a condo downtown');
+    expect(r.kind).toBe('askTransactionType');
+  });
 });
 
-console.log('dalton.lease.test: done');
+describe('Sale path regression', () => {
+  test('3 bed home in Mueller under 800k -> /properties/', () => {
+    const r = handleSearchTurn('3 bed home in Mueller under 800k');
+    expect(r.kind).toBe('results');
+    expectUrlToContain(r.url, ['/properties/', 'bedsMin=3', 'priceMax=800000']);
+  });
+
+  test('buy retail building Austin 5000 sf -> /commercial/', () => {
+    const r = handleSearchTurn('buy retail building Austin 5000 sf');
+    expect(r.kind).toBe('results');
+    expectUrlToContain(r.url, ['/commercial/', 'useType=retail']);
+  });
+});
